@@ -1,0 +1,566 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Notebook-only setup: %pip -q install "transformers==4.57.6" "huggingface-hub==0.36.2" "safetensors>=0.4" "spacy>=3.7,<4" "rouge-score>=0.1.2" "scikit-learn>=1.4" "pandas>=2" "requests>=2.31" "pymupdf>=1.26,<2"
+
+import json, re, os, hashlib, zipfile, math
+from pathlib import Path
+from datetime import datetime, timezone
+import numpy as np
+import pandas as pd
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
+import pymupdf as fitz  # PDF reading; install the PyMuPDF package, not the unrelated `fitz` package
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+from IPython.display import display, Markdown
+
+print('PyTorch:',torch.__version__,'device:',torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+print('PyMuPDF:',fitz.VersionBind)
+print('No model training or HF dataset authentication is required for this notebook.')
+
+import requests, io, shutil, sys, time
+from collections import defaultdict
+from rouge_score import rouge_scorer
+from tqdm.auto import tqdm
+
+# Frozen evaluation configuration. Don't optimize on the evaluation cases.
+MAX_CASES = 50                # start small; later use 50 for final full-dataset evaluation
+SUMMARY_WORD_BUDGET = 400  # same for every system; never uses gold-summary length
+REDUNDANCY_COSINE = 0.86
+MAX_SENTENCES_PER_CASE = 1800  # skip very long documents explicitly; never truncate silently
+EMBEDDING_BATCH_SIZE = 12 if torch.cuda.is_available() else 4
+SEED = 42
+np.random.seed(SEED)
+print('Evaluation configuration:',dict(max_cases=MAX_CASES,budget=SUMMARY_WORD_BUDGET,device=str(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))))
+
+# These imports belong to the Drive setup cell so it also works when run independently.
+from pathlib import Path
+import zipfile
+from google.colab import drive
+# A single Drive authorization flow; no extra google.colab.auth.authenticate_user()
+drive.mount('/content/drive')
+DRIVE=Path('/content/drive/MyDrive')
+if not DRIVE.is_dir(): DRIVE=Path('/content/drive/My Drive')
+assert DRIVE.is_dir(), 'Cannot locate My Drive after mounting.'
+
+# Change these ONLY if files live elsewhere in this account:
+STAGE22_FOLDER_OVERRIDE = ''  # folder containing context256/, not best_checkpoint/
+STAGE23_HEAD_ZIP_OVERRIDE = '' # full path to our small stage2_3_bilstm_head_bundle.zip
+STAGE22_SHARED_FOLDER_ID='1_scAoDepjECZBTPYSWTe-xntTU68HYXj'
+
+# Stage 2.3 head bundle is small (~3.4 MB). Other Google accounts do not
+# automatically mount files from an account's "Shared with me" section.
+# This recovery is interactive ONLY if a suitable ZIP cannot already be found.
+asset_name = 'stage2_3_bilstm_head_bundle.zip'
+HEAD_BACKUP_DIR = DRIVE/'Colab Notebooks'/'Stage3 Assets'
+asset_candidates = [
+    HEAD_BACKUP_DIR/asset_name,
+    DRIVE/'Stage3 Assets'/asset_name,
+    DRIVE/asset_name,
+    Path('/content')/asset_name,
+]
+if STAGE23_HEAD_ZIP_OVERRIDE.strip():
+    asset_candidates.insert(0, Path(STAGE23_HEAD_ZIP_OVERRIDE).expanduser())
+
+REQUIRED_HEAD_FILES = {'bilstm_softmax/head_config.json', 'bilstm_softmax/best_head.pt'}
+
+def valid_head_bundle(path):
+    # Verify that the file is not an unrelated results ZIP or an incomplete download.
+    try:
+        with zipfile.ZipFile(path) as z:
+            return REQUIRED_HEAD_FILES.issubset(set(z.namelist())) and z.testzip() is None
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return False
+
+HEAD_ZIP = next((p for p in asset_candidates if p.is_file() and valid_head_bundle(p)), None)
+if HEAD_ZIP is None:
+    print('The trained Stage 2.3 BiLSTM head ZIP was not found in this account.')
+    print('Open the source file in Google Drive, download it to your computer:')
+    print('https://drive.google.com/file/d/1ZlBeH_aiyQxAuRZj4xouEeArL3NQVat7/view')
+    print('Then choose that ZIP in the upload dialog opening below.')
+    print('This is NOT the Stage 2.3 research-results ZIP; upload the HEAD BUNDLE ZIP.')
+    from google.colab import files as colab_files
+    uploaded = colab_files.upload()  # only called when no valid saved ZIP exists
+    if not uploaded:
+        raise FileNotFoundError('Upload canceled; cannot load a trained BiLSTM head.')
+    head_bytes = None
+    # Permit a renamed downloaded file as long as the actual contents are correct.
+    for filename, payload in uploaded.items():
+        if not filename.lower().endswith('.zip'):
+            continue
+        import io
+        with zipfile.ZipFile(io.BytesIO(payload)) as z:
+            if REQUIRED_HEAD_FILES.issubset(set(z.namelist())) and z.testzip() is None:
+                head_bytes = payload
+                break
+    if head_bytes is None:
+        raise ValueError('The uploaded file is not the saved Stage 2.3 BiLSTM head bundle. '
+                         'Download the HEAD BUNDLE ZIP from the link above and retry.')
+    HEAD_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    temp_path = HEAD_BACKUP_DIR/(asset_name+'.partial')
+    temp_path.write_bytes(head_bytes)
+    target_path = HEAD_BACKUP_DIR/asset_name
+    temp_path.replace(target_path)  # atomic save after verification
+    HEAD_ZIP = target_path
+    print('Saved trained head ZIP for future sessions at:', HEAD_ZIP)
+else:
+    print('Found and verified trained head bundle:', HEAD_ZIP)
+
+stage22_name='legal_summarizer_stage2_2_artifacts'
+root_candidates=[DRIVE/stage22_name]
+for shortcut_base in ('.shortcut-targets-by-id','.shortcut-targets-byid'):
+    root_candidates += [
+      Path('/content/drive')/shortcut_base/STAGE22_SHARED_FOLDER_ID/stage22_name,
+      Path('/content/drive')/shortcut_base/STAGE22_SHARED_FOLDER_ID,
+      DRIVE/shortcut_base/STAGE22_SHARED_FOLDER_ID/stage22_name,
+      DRIVE/shortcut_base/STAGE22_SHARED_FOLDER_ID,
+    ]
+if STAGE22_FOLDER_OVERRIDE.strip(): root_candidates.insert(0,Path(STAGE22_FOLDER_OVERRIDE))
+REQUIRED_ENCODER=['config.json','tokenizer.json','model.safetensors']
+CHECKPOINT_DIR=next((x/'context256'/'best_checkpoint' for x in root_candidates
+                     if all((x/'context256'/'best_checkpoint'/name).is_file() for name in REQUIRED_ENCODER)),None)
+if CHECKPOINT_DIR is None:
+    raise FileNotFoundError('Cannot find fine-tuned Stage 2.2 context checkpoint. '
+        'Add the shared Stage 2.2 folder shortcut to MyDrive, or set STAGE22_FOLDER_OVERRIDE. '
+        'The saved source folder: https://drive.google.com/drive/folders/'+STAGE22_SHARED_FOLDER_ID)
+
+OUT_DIR=DRIVE/'legal_summarizer_stage3_outputs'
+OUT_DIR.mkdir(parents=True,exist_ok=True)
+print('Fine-tuned encoder:',CHECKPOINT_DIR)
+print('Trained BiLSTM bundle:',HEAD_ZIP)
+print('Summaries will be saved under:',OUT_DIR)
+
+def checkpoint_signature(path):
+    h=hashlib.sha256()
+    for name in ('config.json','tokenizer.json','model.safetensors'):
+        p=Path(path)/name
+        if not p.is_file(): raise FileNotFoundError(p)
+        h.update(name.encode());h.update(str(p.stat().st_size).encode())
+        with p.open('rb') as f:
+            h.update(f.read(128*1024))
+            if p.stat().st_size>128*1024:
+                f.seek(-128*1024,2);h.update(f.read(128*1024))
+    return h.hexdigest()
+
+with zipfile.ZipFile(HEAD_ZIP) as z:
+    required=['bilstm_softmax/head_config.json','bilstm_softmax/best_head.pt']
+    if not all(n in z.namelist() for n in required):
+        raise ValueError('Invalid Stage 2.3 bundle; missing trained head or configuration')
+    head_config=json.loads(z.read(required[0]))
+    weights_data=z.read(required[1])
+
+SIGNATURE=checkpoint_signature(CHECKPOINT_DIR)
+if head_config['feature_checkpoint_signature'] != SIGNATURE:
+    raise RuntimeError('Stage 2.3 head was trained using a DIFFERENT encoder checkpoint. '
+                       'Do not combine these weights. Check the Stage 2.2 folder you mounted.')
+
+import io
+saved=torch.load(io.BytesIO(weights_data),map_location='cpu',weights_only=True)
+assert saved['feature_signature']==SIGNATURE
+assert saved['crf'] is None and head_config['use_crf'] is False
+CFG=head_config['cfg']
+LABELS=['ANALYSIS','ARG_PETITIONER','ARG_RESPONDENT','FAC','ISSUE','NONE','PREAMBLE',
+        'PRE_NOT_RELIED','PRE_RELIED','RATIO','RLC','RPC','STA']
+
+class SentenceBiLSTM(nn.Module):
+    # Exactly the same architecture as saved Stage 2.3 Softmax head
+    def __init__(self,in_dim=768,n_labels=13,hidden=128,dropout=0.3):
+        super().__init__()
+        self.norm=nn.LayerNorm(in_dim)
+        self.drop=nn.Dropout(dropout)
+        self.lstm=nn.LSTM(in_dim,hidden,num_layers=1,batch_first=True,bidirectional=True)
+        self.classifier=nn.Linear(hidden*2,n_labels)
+    def forward(self,x,lengths):
+        x=self.drop(self.norm(x))
+        packed=nn.utils.rnn.pack_padded_sequence(x,lengths.cpu(),batch_first=True,enforce_sorted=False)
+        packed_out,_=self.lstm(packed)
+        output,_=nn.utils.rnn.pad_packed_sequence(packed_out,batch_first=True,total_length=x.shape[1])
+        return self.classifier(self.drop(output))
+
+DEVICE=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+HEAD=SentenceBiLSTM(hidden=CFG['hidden_size'],dropout=CFG['dropout']).to(DEVICE)
+HEAD.load_state_dict(saved['bilstm'],strict=True)
+HEAD.eval()
+print('Loaded Stage 2.3 Softmax BiLSTM, trained best epoch',saved['epoch'])
+print('Checkpoint fingerprint MATCHED:',SIGNATURE[:16]+'...')
+
+TOKENIZER=AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR),use_fast=True,local_files_only=True)
+MARK_PREV=TOKENIZER.encode('PREVIOUS:',add_special_tokens=False)
+MARK_NEXT=TOKENIZER.encode('NEXT:',add_special_tokens=False)
+ENCODER=AutoModelForSequenceClassification.from_pretrained(str(CHECKPOINT_DIR),local_files_only=True).to(DEVICE).eval()
+assert ENCODER.config.num_labels==13
+assert [ENCODER.config.id2label[i] for i in range(13)]==LABELS
+for p in ENCODER.parameters():p.requires_grad_(False)
+COLLATOR=DataCollatorWithPadding(tokenizer=TOKENIZER,return_tensors='pt')
+
+def pack_context_ids(target_ids,previous_ids,next_ids,max_length=256,target_cap=192):
+    tgt=list(target_ids[:min(target_cap,max_length-3)])
+    budget=max_length-len(tgt)-3
+    pmark=MARK_PREV if previous_ids else []
+    nmark=MARK_NEXT if next_ids else []
+    free=budget-len(pmark)-len(nmark)
+    if free<0: raise ValueError('No token budget for context markers')
+    prev_cap=min(len(previous_ids),(free+1)//2) if previous_ids else 0
+    next_cap=min(len(next_ids),free//2) if next_ids else 0
+    left=free-prev_cap-next_cap
+    prev_cap+=min(len(previous_ids)-prev_cap,left)
+    left=free-prev_cap-next_cap
+    next_cap+=min(len(next_ids)-next_cap,left)
+    prev_part=list(previous_ids[-prev_cap:]) if prev_cap else []
+    next_part=list(next_ids[:next_cap]) if next_cap else []
+    context=pmark+prev_part+nmark+next_part
+    ids=[TOKENIZER.cls_token_id]+tgt+[TOKENIZER.sep_token_id]+context+[TOKENIZER.sep_token_id]
+    segment0=len(tgt)+2
+    item={'input_ids':ids,'attention_mask':[1]*len(ids),
+          'token_type_ids':[0]*segment0+[1]*(len(ids)-segment0)}
+    assert len(ids)<=max_length
+    return item
+
+# Verify the context packing exactly respects the Stage 2.3 settings.
+assert CFG['max_length']==256 and CFG['max_target_context']==192
+assert len(pack_context_ids(list(range(500)),list(range(300)),list(range(300)))['input_ids'])<=256
+print('Stage 2.3 context format reconstructed successfully.')
+
+# Optional absolute mounted path to official dataset.zip, otherwise auto-download.
+DATASET_ZIP_OVERRIDE = ''
+SAVE_ARCHIVE_TO_DRIVE = True  # ~98MB; change to False if Drive is low on space
+DATASET_MD5 = 'c77948fe580d26200f5c9fe53b81485d'  # official Zenodo archive
+DATASET_URLS = [
+    'https://zenodo.org/records/7152317/files/dataset.zip?download=1',
+    'https://zenodo.org/api/records/7152317/files/dataset.zip/content',
+]
+EVAL_DIR = DRIVE/'legal_summarizer_stage3_1_artifacts'
+EVAL_DIR.mkdir(parents=True,exist_ok=True)
+ZIP_CACHE = EVAL_DIR/'official_dataset_7152317.zip'
+
+def md5sum(path):
+    h=hashlib.md5()
+    with open(path,'rb') as f:
+        for chunk in iter(lambda:f.read(4*1024*1024),b''):h.update(chunk)
+    return h.hexdigest()
+
+def correct_zip(path):
+    return Path(path).is_file() and md5sum(path)==DATASET_MD5
+
+if DATASET_ZIP_OVERRIDE.strip():
+    dataset_zip=Path(DATASET_ZIP_OVERRIDE).expanduser()
+    if not correct_zip(dataset_zip):
+        raise ValueError('Override must point to unmodified official dataset.zip with matching MD5.')
+elif correct_zip(ZIP_CACHE):
+    dataset_zip=ZIP_CACHE
+    print('Using verified cached Zenodo archive:',dataset_zip)
+else:
+    from google.colab import files as colab_files
+    download_path=Path('/content/inext_dataset_7152317.zip')
+    downloaded=False
+    for url in DATASET_URLS:
+        try:
+            print('Downloading official Law-AI dataset from:',url)
+            with requests.get(url,stream=True,timeout=(20,120),allow_redirects=True) as resp:
+                resp.raise_for_status()
+                with download_path.open('wb') as f:
+                    for part in resp.iter_content(chunk_size=4*1024*1024):
+                        if part:f.write(part)
+            if not correct_zip(download_path):
+                raise ValueError('Archive checksum mismatch — remove incomplete download and retry.')
+            downloaded=True
+            break
+        except Exception as exc:
+            print('Download attempt failed:',type(exc).__name__,str(exc)[:220])
+            download_path.unlink(missing_ok=True)
+    if not downloaded:
+        print('Download official dataset.zip from https://zenodo.org/records/7152317')
+        print('You may upload the original ZIP now, or set DATASET_ZIP_OVERRIDE and rerun this cell.')
+        uploaded=colab_files.upload()
+        if len(uploaded)!=1:raise FileNotFoundError('Expected one original Zenodo dataset.zip.')
+        name=next(iter(uploaded))
+        download_path.write_bytes(uploaded[name])
+        if not correct_zip(download_path):
+            raise ValueError('Uploaded archive does not match official Zenodo MD5: '+DATASET_MD5)
+    dataset_zip=download_path
+    if SAVE_ARCHIVE_TO_DRIVE:
+        shutil.copyfile(download_path,ZIP_CACHE)
+        print('Saved verified archive to Drive:',ZIP_CACHE)
+
+print('Verified official dataset MD5:',md5sum(dataset_zip),'size(MB):',round(dataset_zip.stat().st_size/1024**2,1))
+
+def canonical_rel_name(path):
+    # Parse zip path, locate IN-Ext anywhere in nesting; case-insensitive.
+    parts=path.replace('\\','/').split('/')
+    hits=[i for i,p in enumerate(parts) if p.lower().replace('_','-') in ('in-ext','inext')]
+    if not hits:return None
+    return parts[hits[-1]+1:]
+
+def build_inext_index(z):
+    result={'judgement':{},'A1':{},'A2':{}}
+    for info in z.infolist():
+        if info.is_dir() or info.file_size==0 or info.file_size>20_000_000:continue
+        rel=canonical_rel_name(info.filename)
+        if not rel or len(rel)<2:continue
+        rel_low=[p.lower() for p in rel]
+        if rel_low[0] in ('judgement','judgment'):
+            # If judgments are nested, preserve suffix of filename to avoid collisions.
+            key='/'.join(rel[1:]).lower()
+            result['judgement'][key]=info.filename
+        elif (len(rel)>=4 and rel_low[0]=='summary' and rel_low[1]=='full'
+              and rel_low[2] in ('a1','a2')):
+            key='/'.join(rel[3:]).lower()
+            result[rel[2].upper()][key]=info.filename
+    pairs=[]
+    for k in sorted(set(result['judgement'])&set(result['A1'])&set(result['A2'])):
+        if k.endswith(('.txt','.text')):
+            pairs.append({'case_id':k,'judgment':result['judgement'][k],
+                          'a1':result['A1'][k],'a2':result['A2'][k]})
+    return pairs,result
+
+with zipfile.ZipFile(dataset_zip) as ZIP:
+    CASES,INDEX=build_inext_index(ZIP)
+    print('Found:',len(INDEX['judgement']),'judgments,',len(INDEX['A1']),'A1 references,',len(INDEX['A2']),'A2 references')
+    print('Fully matched cases:',len(CASES))
+    if not CASES:
+        print('Sample archive paths:',ZIP.namelist()[:30])
+        raise RuntimeError('Cannot match IN-Ext judgment and annotator summary paths; inspect official archive structure.')
+    if len(CASES)<MAX_CASES:
+        raise ValueError(f'Only {len(CASES)} matched cases, but MAX_CASES={MAX_CASES}.')
+    def read_zip_text(path):
+        raw=ZIP.read(path)
+        return raw.decode('utf-8',errors='replace')
+    CASE_DATA=[{'case_id':row['case_id'],
+                'judgment':read_zip_text(row['judgment']),
+                'A1':read_zip_text(row['a1']),
+                'A2':read_zip_text(row['a2'])} for row in CASES[:MAX_CASES]]
+
+print('Selected case IDs:',[x['case_id'] for x in CASE_DATA])
+print('Gold summary lengths for INFORMATION ONLY; they are NEVER used to set summary budget:')
+for x in CASE_DATA:print(x['case_id'],'A1',len(x['A1'].split()),'A2',len(x['A2'].split()))
+
+NLP=spacy.blank('en')
+NLP.add_pipe('sentencizer')
+
+def normalize_for_segmentation(text):
+    text=text.replace('\u00ad','')
+    text=re.sub(r'(?<=\w)-\s*\n\s*(?=\w)','',text)
+    return re.sub(r'\s+',' ',text).strip()
+
+def segment_document(text):
+    cleaned=normalize_for_segmentation(text)
+    NLP.max_length=max(NLP.max_length,len(cleaned)+100)
+    sentences=[s.text.strip() for s in NLP(cleaned).sents if re.search(r'[A-Za-z]',s.text)]
+    if len(sentences)<4:raise ValueError(f'Too few sentences found: {len(sentences)}')
+    if len(sentences)>MAX_SENTENCES_PER_CASE:
+        raise ValueError(f'Judgment contains {len(sentences)} sentences; hard limit {MAX_SENTENCES_PER_CASE}. '
+                         'Increase MAX_SENTENCES_PER_CASE after checking RAM; nothing has been truncated.')
+    return sentences
+
+@torch.inference_mode()
+def predict_roles(sentences,batch_size=8):
+    encoded_tokens=TOKENIZER(sentences,add_special_tokens=False,padding=False,
+                             return_attention_mask=False)['input_ids']
+    packed=[]
+    for i,ids in enumerate(encoded_tokens):
+        before=encoded_tokens[i-1] if i else []
+        after=encoded_tokens[i+1] if i+1<len(encoded_tokens) else []
+        packed.append(pack_context_ids(ids,before,after,
+                                      max_length=CFG['max_length'],
+                                      target_cap=CFG['max_target_context']))
+    all_features=[]
+    from tqdm.auto import tqdm
+    for start in tqdm(range(0,len(packed),batch_size),desc='Encode sentences'):
+        batch=COLLATOR(packed[start:start+batch_size])
+        inputs={k:v.to(DEVICE) for k,v in batch.items()}
+        with torch.amp.autocast(device_type='cuda',enabled=(DEVICE.type=='cuda')):
+            cls=ENCODER.base_model(**inputs,return_dict=True).last_hidden_state[:,0,:]
+        # Original Stage 2.3 encoder saved float16 embeddings before loading the BiLSTM.
+        all_features.append(cls.float().cpu().to(torch.float16))
+    features=torch.cat(all_features,dim=0).float().unsqueeze(0).to(DEVICE)
+    lengths=torch.tensor([len(sentences)],dtype=torch.long)
+    logits=HEAD(features,lengths)[0].float()
+    probs=torch.softmax(logits,dim=-1).cpu().numpy()
+    role_idx=probs.argmax(axis=1)
+    return role_idx,probs
+
+# Fixed rules, chosen before seeing IN-Ext results.
+ROLE_GROUPS = {
+    'Facts':['FAC'], 'Issues':['ISSUE'],
+    'Petitioner arguments':['ARG_PETITIONER'], 'Respondent arguments':['ARG_RESPONDENT'],
+    'Legal reasoning':['ANALYSIS','RATIO','PRE_RELIED','STA'],
+    'Decision':['RPC'],
+}
+ROLE_QUOTAS = {'Facts':3,'Issues':1,'Petitioner arguments':1,'Respondent arguments':1,
+               'Legal reasoning':4,'Decision':2}
+ROLE_PRIORITY=['Decision','Issues','Facts','Legal reasoning','Petitioner arguments','Respondent arguments']
+
+# Sentence importance is computed without gold summaries.
+def sentence_features(sentences):
+    v=TfidfVectorizer(stop_words='english',ngram_range=(1,2),max_features=8000).fit_transform(sentences)
+    cent=np.asarray(v.mean(axis=0)).ravel()[None,:]
+    vals=cosine_similarity(v,cent).ravel()
+    vals/=max(float(vals.max()),1e-8)
+    return v,vals
+
+def select_indices(sentences,vectors,ranking,budget=SUMMARY_WORD_BUDGET,chosen=None,
+                   redundancy=REDUNDANCY_COSINE):
+    selected=list(chosen or [])
+    total=sum(len(sentences[i].split()) for i in selected)
+    for idx in ranking:
+        i=int(idx)
+        if i in selected:continue
+        wc=len(sentences[i].split())
+        if wc<5 or total+wc>budget:continue
+        if selected:
+            similarities=cosine_similarity(vectors[i],vectors[selected]).ravel()
+            if len(similarities) and float(max(similarities))>=redundancy:continue
+        selected.append(i);total+=wc
+        if total>=budget:break
+    return selected
+
+def make_lead_summary(sentences,budget=SUMMARY_WORD_BUDGET):
+    # Lead takes original sentences; no skipping to optimize relevance.
+    chosen=[];words=0
+    for i,s in enumerate(sentences):
+        wc=len(s.split())
+        if wc<5:continue
+        if words+wc>budget:break
+        chosen.append(i);words+=wc
+    return chosen
+
+def make_tfidf_summary(sentences,vectors,cent,budget=SUMMARY_WORD_BUDGET):
+    rank=np.argsort(-cent,kind='stable')
+    return select_indices(sentences,vectors,rank,budget)
+
+def make_role_summary(sentences,vectors,cent,role_probs,budget=SUMMARY_WORD_BUDGET):
+    # Reserve slots across important roles using SOFT probs to tolerate missed ISSUE hard labels.
+    # Use only predictions + text, not expert summaries or document gold annotations.
+    per_section={key:role_probs[:,[LABELS.index(r) for r in labels]].sum(axis=1)
+                 for key,labels in ROLE_GROUPS.items()}
+    chosen=[]
+    for section in ROLE_PRIORITY:
+        mass=per_section[section]
+        # Probabilities are conditional uncalibrated scores, treated only as *ranking*.
+        score=.70*mass + .30*cent
+        ranking=np.argsort(-score,kind='stable')
+        picks_for_section=0
+        for idx in ranking:
+            before=len(chosen)
+            chosen=select_indices(sentences,vectors,[idx],budget,chosen)
+            if len(chosen)>before:picks_for_section+=1
+            if picks_for_section>=ROLE_QUOTAS[section]:break
+    # Fill any spare budget with central, nonredundant sentences (same scorer as baseline).
+    chosen=select_indices(sentences,vectors,np.argsort(-cent,kind='stable'),budget,chosen)
+    return chosen
+
+def summary_as_text(sentences,indices):
+    return '\n'.join(sentences[i] for i in sorted(indices))
+
+# Sanity checks for summary budget, output traceability, source order and deterministic operation.
+_t=['Introductory heading text has enough words for the first sample sentence.',
+    'The principal question is whether the administrative action was valid in law.',
+    'The court accepted the objection and ordered a fresh hearing for both parties.',
+    'The petition was allowed and the disputed order was therefore set aside.']
+_v,_c=sentence_features(_t)
+_i=make_tfidf_summary(_t,_v,_c,budget=50)
+assert sum(len(_t[j].split()) for j in _i)<=50
+assert summary_as_text(_t,[3,1]).splitlines()[0]==_t[1]
+print('Extractive summarizers initialized; gold references are not used for selection.')
+
+scorer=rouge_scorer.RougeScorer(['rouge1','rouge2','rougeL'],use_stemmer=True)
+report=[];audit=[];errors=[];examples={}
+
+for case in tqdm(CASE_DATA,desc='Evaluate Indian judgments'):
+    cid=case['case_id']
+    try:
+        sents=segment_document(case['judgment'])
+        vectors,cent=sentence_features(sents)
+        lead_ix=make_lead_summary(sents)
+        tf_ix=make_tfidf_summary(sents,vectors,cent)
+        role_ids,prob=predict_roles(sents,batch_size=EMBEDDING_BATCH_SIZE)
+        role_ix=make_role_summary(sents,vectors,cent,prob)
+        indices={'Lead':lead_ix,'TFIDF':tf_ix,'Role-guided':role_ix}
+        for method,ixs in indices.items():
+            generated=summary_as_text(sents,ixs)
+            wc=len(generated.split())
+            assert wc<=SUMMARY_WORD_BUDGET
+            assert all(0<=k<len(sents) for k in ixs)
+            for annotator in ('A1','A2'):
+                reference=case[annotator]
+                scores=scorer.score(reference,generated)
+                report.append({'case_id':cid,'reference':annotator,'method':method,
+                               'input_sentences':len(sents),'input_words':len(case['judgment'].split()),
+                               'summary_sentences':len(ixs),'summary_words':wc,
+                               'compression_ratio':round(wc/max(1,len(case['judgment'].split())),4),
+                               'rouge1_f1':scores['rouge1'].fmeasure,
+                               'rouge2_f1':scores['rouge2'].fmeasure,
+                               'rougeL_f1':scores['rougeL'].fmeasure})
+            audit.append({'case_id':cid,'method':method,'indices':sorted(int(i) for i in ixs),
+                          'source_sentences':[{'sid':f'S{i+1:04d}','text':sents[i],
+                                               'predicted_role':LABELS[int(role_ids[i])]}
+                                              for i in sorted(ixs)]})
+            if len(examples)<3:
+                examples.setdefault(cid,{})[method]=generated
+        print('Completed:',cid,'|',len(sents),'sentences')
+    except Exception as e:
+        errors.append({'case_id':cid,'type':type(e).__name__,'error':str(e)})
+        print('Case skipped, not silently truncated:',cid,type(e).__name__,str(e)[:220])
+
+if not report:
+    raise RuntimeError('No cases successfully evaluated. See errors above. Do NOT report ROUGE values.')
+
+results=pd.DataFrame(report)
+case_means=results.groupby(['case_id','method'],as_index=False)[['rouge1_f1','rouge2_f1','rougeL_f1']].mean()
+summary=case_means.groupby('method')[['rouge1_f1','rouge2_f1','rougeL_f1']].agg(['mean','std','count'])
+print('ROUGE is F1 from 0 to 1. Average each case across A1 and A2 first, then across cases:')
+display(summary.round(4))
+print('Mean generated summary length (words) by model:')
+display(results.groupby('method')['summary_words'].mean().round(1))
+print('Successful cases:',results.case_id.nunique(),'of',MAX_CASES,'| skipped:',len(errors))
+if errors:display(pd.DataFrame(errors))
+
+for cid,methods in list(examples.items())[:1]:
+    print('CASE:',cid)
+    for m,t in methods.items():
+        display(Markdown(f'### {m} — extracted from real judgment\n'+t[:5500]))
+    corresponding=next(x for x in CASE_DATA if x['case_id']==cid)
+    for ref in ('A1','A2'):
+        display(Markdown(f'### Expert {ref} (excerpt)\n'+corresponding[ref][:4500]))
+    break
+
+print('Human review: Does the summary preserve factual situation, issue, relevant reasoning, and final ruling?')
+print('Do not mistake ROUGE overlap for factual verification.')
+
+stamp=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+run_dir=EVAL_DIR/f'inext_{stamp}'
+run_dir.mkdir(parents=True,exist_ok=True)
+results.to_csv(run_dir/'all_reference_scores.csv',index=False)
+case_means.to_csv(run_dir/'per_case_mean_scores.csv',index=False)
+results.groupby('method')[['rouge1_f1','rouge2_f1','rougeL_f1','summary_words','compression_ratio']].mean().to_csv(run_dir/'aggregate_scores.csv')
+(run_dir/'source_sentence_audit.json').write_text(json.dumps(audit,indent=2,ensure_ascii=False))
+(run_dir/'skipped_cases.json').write_text(json.dumps(errors,indent=2,ensure_ascii=False))
+(run_dir/'sample_summaries.json').write_text(json.dumps(examples,indent=2,ensure_ascii=False))
+config={'dataset':'Law-AI IN-Ext, Zenodo record 7152317','dataset_md5':DATASET_MD5,
+        'cases_selected':[x['case_id'] for x in CASE_DATA],
+        'cases_scored':int(results.case_id.nunique()),'word_budget':SUMMARY_WORD_BUDGET,
+        'redundancy_cosine':REDUNDANCY_COSINE,'encoder_signature':SIGNATURE,
+        'head_best_epoch':int(saved['epoch']),'softmax_head':True,'uses_gold_to_select':False,
+        'notes':['Pilot results are not full-benchmark scores if MAX_CASES<50.',
+                 'A1 and A2 are separate human summaries.',
+                 'Novelty, factuality, data leakage, annotation conventions require further investigation.']}
+(run_dir/'run_config.json').write_text(json.dumps(config,indent=2))
+review_rows=[]
+for cid in results.case_id.unique():
+    for method in ('Lead','TFIDF','Role-guided'):
+        review_rows.append({'case_id':cid,'method':method,'factual_accuracy_1_5':'',
+            'legal_issue_coverage_1_5':'','final_ruling_coverage_1_5':'',
+            'legal_reasoning_coverage_1_5':'','redundancy_1_5':'','reviewer_notes':''})
+pd.DataFrame(review_rows).to_csv(run_dir/'human_review_template.csv',index=False)
+zip_name=Path('/content/stage3_1_inext_evaluation_results.zip')
+with zipfile.ZipFile(zip_name,'w',compression=zipfile.ZIP_DEFLATED) as z:
+    for p in run_dir.iterdir():z.write(p,p.name)
+print('Saved all artifacts to:',run_dir)
+print('Downloadable results ZIP:',zip_name)
+from google.colab import files
+# Manual download avoids prompting during Run all; uncomment if you want immediate download.
+# files.download(str(zip_name))
+

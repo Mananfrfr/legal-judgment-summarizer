@@ -1,0 +1,1528 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+from pathlib import Path
+import sys, subprocess, os, json, datetime
+WORK = Path('/content/legal_stage441')
+for folder in ('src', 'tests', 'inputs', 'outputs'):
+    (WORK / folder).mkdir(parents=True, exist_ok=True)
+ENV = Path('/content/legal_stage441_env')
+PY = str(ENV / 'bin' / 'python')
+
+
+subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'virtualenv'])
+if not Path(PY).exists():
+    subprocess.check_call([sys.executable, '-m', 'virtualenv', str(ENV)])
+try:
+    import torch as colab_torch
+    GPU_AVAILABLE = colab_torch.cuda.is_available()
+except ImportError:
+    GPU_AVAILABLE = False
+torch_index = 'https://download.pytorch.org/whl/cu128' if GPU_AVAILABLE else 'https://download.pytorch.org/whl/cpu'
+subprocess.check_call([PY, '-m', 'pip', 'install', '-q', 'torch==2.8.0', '--index-url', torch_index])
+print('Isolated environment ready; GPU detected:', GPU_AVAILABLE)
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/requirements.txt
+# Install in the notebook's isolated environment, not into Colab's base environment.
+# PyTorch is installed separately for the selected CPU/CUDA runtime.
+transformers==4.57.6
+huggingface-hub==0.36.2
+safetensors==0.8.0
+tokenizers==0.22.2
+numpy>=1.26,<3
+PyMuPDF>=1.24,<2
+pytesseract>=0.3.13,<0.4
+Pillow>=10,<13
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/requirements-ui.txt
+-r requirements.txt
+gradio==5.49.1
+
+
+subprocess.check_call([PY, '-m', 'pip', 'install', '-q', '-r', str(WORK / 'requirements.txt')])
+subprocess.check_call([PY, '-m', 'pip', 'check'])
+# Tesseract is only used when pages need OCR; OCR outputs always carry a review warning.
+import shutil
+if not shutil.which('tesseract'):
+    subprocess.check_call(['apt-get', 'update', '-qq'])
+    subprocess.check_call(['apt-get', 'install', '-y', '-qq', 'tesseract-ocr'])
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_app.py
+"""Optional local Gradio UI; public sharing is disabled."""
+import os
+os.environ.setdefault('GRADIO_ANALYTICS_ENABLED','False')
+import tempfile
+from functools import lru_cache
+from pathlib import Path
+from stage44_cli import run_batch
+
+@lru_cache(maxsize=1)
+def trained_model():
+    from stage44_model import FullDocumentRanker
+    encoder=os.environ.get('LEGAL_ENCODER_DIR')
+    bundle=os.environ.get('LEGAL_MODEL_BUNDLE')
+    if not encoder or not bundle:
+        raise ValueError('Set LEGAL_ENCODER_DIR and LEGAL_MODEL_BUNDLE before using trained mode.')
+    return FullDocumentRanker(encoder,bundle)
+
+def process(paths,budget,ocr,evidence_only):
+    if not paths:raise ValueError('Choose at least one PDF or TXT file.')
+    model=None if evidence_only else trained_model()
+    folder=Path(tempfile.mkdtemp(prefix='legal_stage44_'))/'results'
+    report,archive=run_batch(paths,folder,int(budget),model,ocr=ocr)
+    first=next((r for r in report['documents'] if r['processed']),None)
+    preview=(folder/first['result_folder']/'summary.md').read_text(encoding='utf8') if first else 'No summary was produced. See the error report.'
+    return preview,report,archive
+
+def make_app():
+    import gradio as gr
+    with gr.Blocks(title='Evidence-grounded legal summarizer') as app:
+        gr.Markdown('# Legal judgment summarizer\nReview source pages and operative conditions before relying on a summary. Machine checks do not certify legal accuracy.')
+        files=gr.File(file_count='multiple',file_types=['.pdf','.txt'],type='filepath',label='English judgments (up to 30)')
+        budget=gr.Slider(200,2000,value=800,step=100,label='Target words (complete directions can exceed this)')
+        ocr=gr.Radio(['auto','off','force'],value='auto',label='OCR')
+        evidence=gr.Checkbox(value=False,label='Evidence-only mode (skip trained model explicitly)')
+        button=gr.Button('Create summaries')
+        markdown=gr.Markdown()
+        report=gr.JSON(label='Processing and review report')
+        archive=gr.File(label='Download summaries, evidence and review sheet')
+        button.click(process,[files,budget,ocr,evidence],[markdown,report,archive],api_name=False,concurrency_limit=1)
+    return app
+
+if __name__=='__main__':
+    make_app().queue().launch(server_name='127.0.0.1',server_port=7860,share=False,show_error=True)
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_attribution.py
+"""Conservative attribution cues, separate from learned role/importance scores.
+
+Labels describe textual evidence, not calibrated probabilities or verified legal
+roles. Paragraph context prevents a later sentence in a submission/letter from
+being silently promoted into the current court's reasoning.
+"""
+import re
+from stage44_source import quote_mask
+
+PARTY = re.compile(r'\b(?:(?:(?:learned\s+)?(?:senior\s+)?(?:counsel|ASG)|(?:Mr\.|Ms\.|Shri)\s+[\w. ]{1,45}|(?:the\s+)?(?:appellant|respondent|petitioner|claimant)(?:[\s.-]+(?:no\.?\s*)?\d+)?)\s+(?:(?:also|further|strongly|on\s+the\s+other\s+hand)\s+|,\s*)*(?:submitted?|submits|contends?|contended|argued|urged|prayed|pointed\s+out|invited\s+our\s+attention|referred|refuted)|according\s+to\s+(?:learned|Mr\.|Ms\.|Shri|the\s+(?:appellant|respondent|petitioner))|it\s+was\s+(?:(?:also|further)\s+)?(?:submitted|argued|contended|canvassed|pointed\s+out))\b', re.I)
+REPORTED = re.compile(r'\b(?:(?:High|Trial|Family|District|appellate|Executing)\s+Court\b.{0,65}\b(?:held|found|observed|directed|dismissed|allowed|opined|ordered)|(?:Majority\s+Award|arbitral\s+tribunal|earlier\s+(?:court|judgment))\b.{0,60}\b(?:held|found|observed|directed)|(?:complaint|FIR|affidavit)\s+(?:alleges|states|refers)|(?:petitioner|appellant|respondent|complainant)\s+alleges)\b', re.I)
+MATERIAL = re.compile(r'\b(?:(?:following|said)\s+(?:letter|correspondence)|letter\s+(?:was\s+)?written|(?:letter|agreement|affidavit|government\s+order)\b.{0,65}\b(?:reads|states|extracted|reproduced)|Dear\s+Sirs|Yours\s+faithfully)\b', re.I)
+COURT = re.compile(r'\b(?:we\s+(?:(?:are|have|do|would|cannot|can\s+not|must|find|hold|agree|disagree|consider|notice|observe|note|think|conclude|direct|allow|dismiss|quash|set\s+aside|clarify|grant|restore|reject|invoke|make\s+it\s+clear))|in\s+our\s+(?:view|opinion)|our\s+(?:prima\s+facie\s+)?(?:conclusion|view)|this\s+Court\s+finds|let\s+us\s+(?:first\s+)?examine)\b', re.I)
+ASSESSMENT = re.compile(r'\b(?:from\s+a\s+prima\s+facie\s+examination|going\s+by\s+the\s+binding\s+precedents|it\s+(?:is|would\s+be)\s+(?:clear|evident|settled|trite)|it\s+goes\s+without\s+saying|(?:this|such|the\s+above)\s+(?:reasoning|observation|exercise)\b.{0,110}\b(?:conjecture|unsustainable|not\s+been\s+carried|unknown\s+to)|(?:a\s+bare\s+perusal|a\s+reading\s+of)\b.{0,100}\b(?:indicate|apparent)|claim\b.{0,40}\bbarred\s+by\s+limitation|no\s+enforceable\s+legal\s+right|prima\s+facie\s+not\s+made\s+out|such\s+a\s+claim\s+discloses|the\s+aforesaid\s+instructions\s+make\s+it\s+clear)\b', re.I)
+LEGAL_DISPUTE = re.compile(r'\b(?:on\s+the\s+ground\b.{0,200}\b(?:lis|dispute|challenge)|(?:lis|dispute|controversy)\b.{0,40}\b(?:arisen|concerns|relates)|(?:question|issue)\b.{0,65}\b(?:before\s+us|consider|examine|determine))\b', re.I)
+HEARING = re.compile(r'^(?:We\s+have\s+(?:also\s+|carefully\s+)?(?:heard|considered\s+the\s+submissions)|(?:Elaborate\s+)?arguments\s+were\s+heard|As\s+such,\s+we\s+have\s+disposed)', re.I)
+ASSESSMENT_EXTRA = re.compile(r'\b(?:claim\s+stands?\s+barred|(?:reasoning|finding|direction|judgment|order)\b.{0,100}\b(?:unsustainable|conjecture|oblivious|belied)|(?:mere|merely)\s+(?:conjecture|presumption)|no\s+meaningful\s+discussion\s+on\s+merits)\b', re.I)
+CITATION_INTRO = re.compile(r'\b(?:we\s+(?:would\s+like\s+to\s+)?(?:reproduce|quote|extract)|it\s+would\s+be\s+beneficial\s+to\s+reproduce)\b',re.I)
+
+def voice_text(text):
+    mask=quote_mask(text)
+    return ''.join(' ' if quoted else char for char,quoted in zip(text,mask))
+
+def assessment(text):
+    unquoted=voice_text(text)
+    return not HEARING.search(unquoted) and bool(COURT.search(unquoted) or ASSESSMENT.search(unquoted) or ASSESSMENT_EXTRA.search(unquoted))
+
+def attribution_map(doc):
+    result = {}
+    for paragraph in doc.paragraphs:
+        members = [s for s in doc.sentences if s['paragraph_id'] == paragraph['id']]
+        text = paragraph['text']
+        first = members[0]['sentence'] if members else ''
+        party_context = bool(PARTY.search(first))
+        material_context = bool(MATERIAL.search(text[:500]))
+        # A court introduction establishes context, but not a label for every
+        # allegation or authority subsequently reported in that paragraph.
+        court_context = assessment(first) and not party_context and not material_context
+        for s in members:
+            t = s['sentence']
+            if s['quoted']:
+                label, cue = 'quoted_material', 'quotation span; speaker is not assumed to be the present court'
+            elif t.isupper() and len(re.sub(r'[^A-Z]','',t))>8 and not t.rstrip().endswith(('.', '?', '!')):
+                label, cue = 'heading_fragment', 'uppercase heading fragment, not a reasoning sentence'
+            elif CITATION_INTRO.search(t) and t.rstrip().endswith((':',':-')):
+                label, cue = 'citation_introduction', 'introduces reproduced material rather than giving a reason'
+            elif material_context:
+                label, cue = 'document_or_correspondence', 'paragraph introduces a letter or reproduced document'
+            elif PARTY.search(t) or party_context:
+                # An explicit new "we" sentence can return to court voice, but
+                # not when embedded inside the same party submission sentence.
+                if not PARTY.search(t) and re.match(r'^(?:However,\s*)?We\s+', t, re.I):
+                    party_context = False
+                    court_context = True
+                    label, cue = 'current_court', 'explicit return to court voice'
+                else:
+                    label, cue = 'party_submission', 'reported submission or its paragraph context'
+            elif HEARING.search(t):
+                label, cue = 'court_procedure', 'hearing or filing history; not substantive reasoning'
+            elif assessment(t):
+                label, cue = 'current_court', 'present court assessment cue'
+                court_context = True
+            elif REPORTED.search(t):
+                label, cue = 'reported_material', 'earlier ruling, allegation or external finding'
+            elif court_context:
+                label, cue = 'court_context', 'consecutive context within a court-assessment paragraph'
+            else:
+                label, cue = 'unresolved', 'no sufficiently specific attribution cue'
+            result[s['id']] = dict(label=label, cue=cue, method='textual_rules', verified=False)
+        # Preserve preceding context within the same paragraph. Never promote
+        # quoted/attributed submissions or earlier rulings by this backfill.
+        if any(result[s['id']]['label']=='current_court' for s in members) and not party_context and not material_context:
+            for s in members:
+                if result[s['id']]['label']=='unresolved':
+                    result[s['id']]=dict(label='court_context', cue='context in a paragraph containing court assessment; not a separate factual finding',method='textual_rules',verified=False)
+    return result
+
+def current_analysis(s, attributes):
+    return attributes[s['id']]['label'] in {'current_court', 'court_context'}
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_brief.py
+"""Conservative, extractive case brief. Model scores assist ranking, never create text."""
+from __future__ import annotations
+from copy import deepcopy
+import re
+from stage44_source import read_document, verify_evidence
+from stage44_attribution import attribution_map, current_analysis, COURT, ASSESSMENT, PARTY, LEGAL_DISPUTE, assessment
+
+VERSION = '4.4.1'
+SECTION_TITLES = {'background':'Background / allegations and procedural history',
+                  'issue':'Issues / dispute context', 'reasoning':'Reasoning (consecutive source passages; attribution needs review)',
+                  'decision':'Decision and operative directions'}
+HISTORICAL = re.compile(r'\b(?:had\s+(?:been\s+)?(?:dismissed|allowed|directed)|(?:High|Trial|Family|District|lower|appellate)\s+Court\s+(?:had|held|found|concluded|went|observed|ordered|directed|dismissed|allowed)|(?:counsel|appellant|respondent|petitioner)\s+(?:submitted|argued|contended|urged|prayed)|it\s+was\s+(?:held|ordered|directed|submitted)|in\s+the\s+case\s+of)\b',re.I)
+SUBJECT_OUTCOME = re.compile(r'\b(?:appeals?|petitions?|applications?|suit)\b.{0,110}?\b(?:stands?\s+(?:dismissed|allowed|disposed)|(?:is|are|be)\s+(?:hereby\s+|accordingly\s+|partly\s+|partially\s+)?(?:dismissed|allowed|disposed|rejected)|succeeds?|fails?)\b',re.I)
+DIRECT = re.compile(r'\b(?:we\s+(?:(?:hereby|accordingly|therefore|thus|further|also)\s+)*(?:direct|allow|dismiss|quash|set\s+aside|remand|restore|grant|clarify|modify|order|dispose|permit)|in\s+allowing\s+(?:the|this)\s+appeal)\b',re.I)
+ACTION = re.compile(r'\b(?:shall|is\s+directed|are\s+directed|set\s+aside|restored|quash(?:ed)?|modified|remand(?:ed)?|remit(?:ted)?|deposit(?:ed)?|payable|enhanced|release(?:d)?\s+on\s+bail|subject\s+to|exemption\b.{0,40}\bgranted|no\s+(?:order\s+as\s+to\s+)?costs|within\b.{0,50}\b(?:days?|weeks?|months?))\b',re.I)
+ISSUE = re.compile(r'\b(?:whether|questions?\s+(?:of\s+law|for\s+consideration|that\s+arises?|arising)|(?:main|sole|primary|principal|central|singular|next)\s+(?:issue|question|grievance)|issue\s+(?:before\s+us|concerning)|we\s+are\s+called\s+upon|controversy\s+(?:is|relates))\b',re.I)
+CONTEXT = re.compile(r'\b(?:seeks?|seeking|challeng\w*|aggrieved|assail\w*|prayer|grievance|contends?|disputes?|appeal\s+(?:arises|is\s+directed)|rejection\s+of|rejected\s+.*bail|appointment\s+of\s+.*arbitrator)\b',re.I)
+PROCEDURAL=re.compile(r'\b(?:(?:present|instant|these|this)\b.{0,30}\b(?:appeals?|petitions?)\b.{0,45}\b(?:arise|arises|against|challeng)|(?:appeals?|petitions?)\b.{0,45}\b(?:arise|arises)\s+(?:from|out\s+of)|challeng\w*\b.{0,30}\bpresent\b)',re.I)
+REASON = re.compile(r'\b(?:we\s+(?:find|hold|are\s+of|have|cannot|do\s+not|agree)|in\s+our\s+(?:view|opinion)|therefore|because|it\s+(?:follows|is\s+(?:clear|evident))|prima\s+facie|goes\s+without\s+saying|barred\s+by\s+limitation|no\s+(?:merit|substance))\b',re.I)
+FINAL_CONNECTOR = re.compile(r'\b(?:accordingly|in\s+view\s+of|for\s+(?:the\s+)?(?:above|these|foregoing)|in\s+the\s+result|consequently|hence)\b',re.I)
+ORDER_DETAIL = re.compile(r'\b(?:shall|within|subject\s+to|entitled\s+to|stands?\s+restored|set\s+aside|quash(?:ed)?|no\s+further\s+proceedings|enhanced|payable|Rs\.|rupees|compensation\s+(?:is|of)|maintenance\s+(?:is|of|at)|released\s+on\s+bail|no\s+order\s+as\s+to\s+costs|will\s+have\s+to\s+be\s+placed)\b|₹|\d\s*%',re.I)
+
+def elapsed_history(text):
+    return bool(re.search(r'\bwithin\s+(?:a\s+period\s+of\s+)?(?:\d+|[a-z]+)\s+(?:days?|weeks?|months?)\s+(?:from|of|after)\s+(?:the\s+)?(?:signing|execution|filing|occurrence|accident)\b',text,re.I)) and not re.search(r'\b(?:shall|must|direct|directed|order|ordered)\b',text,re.I)
+
+def outcome_score(s, total):
+    text=s['sentence']
+    if s['quoted'] or text.rstrip().endswith('?'):
+        return 0
+    direct=bool(DIRECT.search(text))
+    disposition=bool(SUBJECT_OUTCOME.search(text))
+    if re.search(r'\b(?:interlocutory\s+application|permission\s+to\s+(?:produce|file)|exemption\s+from)\b',text,re.I):
+        return 0 # Ancillary procedural relief cannot establish the main case outcome.
+    if not (direct or disposition):
+        return 0
+    # Requests and reports of earlier orders cannot alone anchor a present order.
+    if HISTORICAL.search(text) and not direct:
+        return 0
+    if re.search(r'\b(?:prays?|prayed|seeks?|seeking|request(?:ed)?)\b.{0,45}\b(?:be\s+allowed|be\s+dismissed)',text,re.I):
+        return 0
+    if re.search(r'\b(?:not|never)\s+(?:hereby\s+)?(?:allow|dismiss|quash)',text,re.I):
+        return 0
+    score=4*direct+3*disposition+2*bool(FINAL_CONNECTOR.search(text))+s['id']/max(1,total-1)
+    if re.search(r'^Pending\s+applications',text,re.I):
+        score-=3
+    return score
+
+def _entry(s, reason):
+    e=deepcopy(s)
+    e['selection_reason']=reason
+    return e
+
+def build_brief(doc, budget=800, predictions=None, model_info=None):
+    if not 100 <= int(budget) <= 3000:
+        raise ValueError('Choose a budget between 100 and 3000 words.')
+    predictions=predictions or {}
+    sections={k:[] for k in SECTION_TITLES}
+    warnings=list(doc.warnings)
+    sentences=doc.sentences
+    attributes=attribution_map(doc)
+    eligible=[s for s in sentences if not s['quoted'] and len(s['sentence'].split()) >= 3]
+    scores={s['id']:outcome_score(s,len(sentences)) for s in eligible}
+    excluded_roles={'party_submission','quoted_material','document_or_correspondence','reported_material'}
+    anchors=[s for s in eligible if scores[s['id']] >= 3 and attributes[s['id']]['label'] not in excluded_roles]
+    decision_ids=set()
+    moved_analysis_ids=set()
+    if anchors:
+        # Strongest order anchor, with a finality tie-break; no page-fraction cutoff.
+        anchor=max(anchors,key=lambda s:(scores[s['id']],s['id']))
+        ap=anchor['paragraph_id']
+        cluster={ap}
+        # Preserve nearby order paragraphs, including conditions without 'allowed'.
+        for s in anchors:
+            if abs(s['paragraph_id']-ap)<=8:
+                cluster.add(s['paragraph_id'])
+        left,right=min(cluster),max(cluster)
+        for p in doc.paragraphs:
+            if left-2 <= p['id'] <= right+8 and not p['quoted']:
+                if (ACTION.search(p['text']) or SUBJECT_OUTCOME.search(p['text'])) and not elapsed_history(p['text']) and not p['text'].rstrip().endswith('?'):
+                    # Do not extend past a postscript into historical narration.
+                    if not HISTORICAL.search(p['text']) or DIRECT.search(p['text']):
+                        cluster.add(p['id'])
+        for s in eligible:
+            if s['paragraph_id'] in cluster:
+                decision_ids.add(s['id'])
+                sections['decision'].append(_entry(s,'operative paragraph; preserve conditions and context'))
+        # Mixed conclusion paragraphs can first explain the law, then give an
+        # order. Move a purely analytical prefix into the reasoning pool; never
+        # cut an amount, qualification, deadline or preceding operative clause.
+        for pid in cluster:
+            members=[s for s in sections['decision'] if s['paragraph_id']==pid]
+            first_order=next((i for i,s in enumerate(members) if DIRECT.search(s['sentence']) or SUBJECT_OUTCOME.search(s['sentence']) or re.search(r'will\s+have\s+to\s+be\s+placed',s['sentence'],re.I)),0)
+            prefix=members[:first_order]
+            if prefix and all(current_analysis(s,attributes) and not ORDER_DETAIL.search(s['sentence']) for s in prefix):
+                move={s['id'] for s in prefix}
+                sections['decision']=[s for s in sections['decision'] if s['id'] not in move]
+                decision_ids-=move
+                moved_analysis_ids|=move
+    else:
+        warnings.append('No reliable present-court disposition located. Do not infer that an appeal was allowed or dismissed.')
+
+    def pred(s):
+        return predictions.get(s['id'],{})
+    def role(s,codes):
+        p=pred(s)
+        return float(p.get('role_confidence',0)) if p.get('role_code') in codes else 0
+    def importance(s):
+        return float(pred(s).get('importance_score',0))
+    pool=[s for s in eligible if s['id'] not in decision_ids]
+    strong_issue=re.compile(r'\b(?:(?:only|main|sole|principal|central|singular)\s+(?:issue|question)|question\b.{0,50}\b(?:arises|consideration)|issue\s+before\s+us|primary\s+grievance)\b',re.I)
+    issue_pool=[s for s in pool if ISSUE.search(s['sentence']) and attributes[s['id']]['label'] not in excluded_roles and not re.match(r'^(?:learned\s+(?:senior\s+)?counsel|it\s+was\s+submitted)\b',s['sentence'],re.I)]
+    if any(strong_issue.search(s['sentence']) for s in issue_pool):
+        issue_pool=[s for s in issue_pool if strong_issue.search(s['sentence']) or (re.match(r'^Whether\b',s['sentence']) and '?' in s['sentence'])]
+    issue_label='explicit issue wording in source; attribution still needs review'
+    issue_mode='explicit_source_issue'
+    if not issue_pool:
+        # Prefer an actual description of what is contested over filing history.
+        dispute=[s for s in pool if LEGAL_DISPUTE.search(s['sentence']) and attributes[s['id']]['label'] not in excluded_roles]
+        competing=[]
+        for p in doc.paragraphs:
+            ms=[s for s in pool if s['paragraph_id']==p['id']]
+            if p['id'] <= max(2,len(doc.paragraphs)*.15) and re.search(r'\b(?:seeks|seeking)\b',p['text'],re.I) and PARTY.search(p['text']):
+                # Keep both sides of a short, introductory dispute description.
+                # This is labeled as reported positions, never court findings.
+                competing=[s for s in ms if not ASSESSMENT.search(s['sentence']) or attributes[s['id']]['label']=='party_submission']
+                if competing: break
+        if dispute:
+            issue_pool=dispute;issue_mode='source_dispute_description'
+            issue_label='source description of the legal dispute; no reformulated question'
+        elif competing:
+            issue_pool=competing;issue_mode='reported_competing_positions'
+            issue_label='reported competing positions; not findings or an explicit question'
+        else:
+            issue_pool=[s for s in pool if (CONTEXT.search(s['sentence']) or PROCEDURAL.search(s['sentence'])) and not ASSESSMENT.search(s['sentence']) and attributes[s['id']]['label'] not in excluded_roles]
+            procedural=[s for s in issue_pool if PROCEDURAL.search(s['sentence'])]
+            if procedural: issue_pool=procedural
+            issue_mode='procedural_context'
+            issue_label='procedural dispute context; not an explicit question formulated by the court'
+        warnings.append('No explicit issue formulation selected: the issue section contains dispute context only.')
+    issue_pool.sort(key=lambda s: (3*bool(ISSUE.search(s['sentence']))+2*role(s,{'ISSUE'})+3*bool(strong_issue.search(s['sentence']))+5*bool(PROCEDURAL.search(s['sentence']))+
+                                  bool(re.search(r'\b(?:before\s+us|present|this\s+(?:appeal|petition))\b',s['sentence'],re.I))+
+                                  2*bool(re.search(r'\b(?:present\s+appeal|appeal\s+arises|appeal\s+is\s+directed|aggrieved|refusal|appointment|contends)\b',s['sentence'],re.I))+
+                                  importance(s)-1.5*bool(HISTORICAL.search(s['sentence'])), -s['id']), reverse=True)
+    used=set(decision_ids)
+    # Reserve space for background and reasons; whole sentences only.
+    word_count=lambda es:sum(len(e['sentence'].split()) for e in es)
+    decision_words=word_count(sections['decision'])
+    remaining=max(0,int(budget)-decision_words)
+    limits={'issue':max(80,int(remaining*.20)), 'background':max(80,int(remaining*.20)),
+            'reasoning':max(100,int(remaining*.60))}
+
+    def add_ranked(section, ranked, max_items, why):
+        for s in ranked:
+            if s['id'] in used:
+                continue
+            if len(sections[section])>=max_items:
+                break
+            # If a crucial single sentence is longer than its share, preserve it and flag overflow.
+            if sections[section] and word_count(sections[section])+len(s['sentence'].split())>limits[section]:
+                continue
+            sections[section].append(_entry(s,why)); used.add(s['id'])
+
+    add_ranked('issue',issue_pool,2 if issue_mode in {'explicit_source_issue','reported_competing_positions'} else 1,issue_label)
+    background=sorted(pool,key=lambda s:(2*role(s,{'FAC','PREAMBLE'})+importance(s)+
+                       2*(1-s['id']/max(1,len(sentences)))+bool(CONTEXT.search(s['sentence'])), -s['id']),reverse=True)
+    # Reserve court-analysis passages before background, so ranking cannot use
+    # up a key reasoning sentence in the background section.
+    background=[s for s in background if not current_analysis(s,attributes)]
+    add_ranked('background',background,3,'background / reported allegations; not a finding of truth')
+    limits['reasoning']=max(limits['reasoning'],int(budget)-sum(word_count(v) for v in sections.values()))
+    reasoning_blocks=[]
+    for p in doc.paragraphs:
+        run=[]
+        def flush_run():
+            if not run:return
+            # Consecutive sentences form the unit of selection. Long paragraphs
+            # are split at sentence boundaries and explicitly marked as excerpts.
+            candidates=[];chunk=[];words=0
+            for s in run:
+                n=len(s['sentence'].split())
+                introduces_list=chunk and bool(re.search(r'\b(?:arguments|grounds|reasons|following)\b.*:',chunk[-1]['sentence'],re.I))
+                if chunk and words+n>max(160,int(limits['reasoning']*.55)) and not introduces_list:
+                    candidates.append(chunk);chunk=[];words=0
+                chunk.append(s);words+=n
+            if chunk:candidates.append(chunk)
+            for chunk in candidates:
+                if not any(assessment(s['sentence']) for s in chunk):continue
+                text=' '.join(s['sentence'] for s in chunk)
+                score=max(importance(s)+role(s,{'ANALYSIS','RATIO'}) for s in chunk)
+                score+=2*sum(assessment(s['sentence']) for s in chunk)/len(chunk)
+                score+=chunk[-1]['id']/max(1,len(sentences))
+                if any(s['id'] in moved_analysis_ids for s in chunk):score+=1
+                if re.search(r'\b(?:postscript|before\s+we\s+part)\b',p['text'],re.I):score-=3
+                reasoning_blocks.append(dict(entries=list(chunk),score=score,tokens=set(re.findall(r'\b[a-z]{4,}\b',text.lower()))))
+        for s in [s for s in sentences if s['paragraph_id']==p['id']]:
+            if s['id'] not in used and current_analysis(s,attributes) and not s['quoted']:
+                run.append(s)
+            else:
+                flush_run();run=[]
+        flush_run()
+    selected_tokens=set()
+    while reasoning_blocks:
+        def block_score(b):
+            overlap=len(b['tokens'] & selected_tokens)/max(1,len(b['tokens'] | selected_tokens))
+            return b['score']-2*overlap
+        block=max(reasoning_blocks,key=block_score);reasoning_blocks.remove(block)
+        words=word_count(block['entries'])
+        if sections['reasoning'] and word_count(sections['reasoning'])+words>limits['reasoning']:continue
+        for s in block['entries']:
+            entry=_entry(s,'consecutive passage with current-court assessment cues; attribution is heuristic')
+            entry['reasoning_block_id']=block['entries'][0]['id']
+            sections['reasoning'].append(entry);used.add(s['id'])
+        selected_tokens|=block['tokens']
+    for entries in sections.values():
+        entries.sort(key=lambda s:s['id'])
+        for entry in entries:
+            entry['attribution']=attributes[entry['id']]
+            if entry['id'] in predictions:
+                entry['ranking_metadata']=dict(predictions[entry['id']])
+                entry['ranking_metadata']['calibrated_probability']=False
+    count=sum(word_count(v) for v in sections.values())
+    if count>budget:
+        warnings.append(f'Budget exceeded ({count}/{budget} words) to keep complete evidence and operative conditions. No sentence was truncated.')
+    if not predictions:
+        warnings.append('Evidence-only mode: trained encoder and selector were not used.')
+    if model_info and model_info.get('long_sentence_ids'):
+        warnings.append(f'{len(model_info["long_sentence_ids"])} sentences exceed the trained encoder target length; model ranking sees their first 192 tokens. Full text is retained for evidence checks.')
+    return dict(version=VERSION, source_file=doc.source_file,source_sha256=doc.sha256,
+                caption_verbatim=doc.caption,sections=sections,issue_mode=issue_mode,word_limit=int(budget),summary_words=count,
+                warnings=list(dict.fromkeys(warnings)), pdf_diagnostics=doc.diagnostics,
+                canonical_pages=doc.pages,model=model_info or {'mode':'evidence_only'},
+                total_source_sentences=len(sentences),quoted_source_sentences=sum(s['quoted'] for s in sentences))
+
+def audit_brief(doc, result):
+    """Independent evidence validation plus broad omission screening.
+
+    A machine-check success is NOT a claim of legal correctness or complete recall.
+    This screening deliberately does not call the summary's outcome scorer.
+    """
+    selected=[e for es in result['sections'].values() for e in es]
+    invalid=[e['id'] for e in selected if not verify_evidence(e,doc.pages)]
+    selected_ids={e['id'] for e in selected}
+    decision_ids={e['id'] for e in result['sections']['decision']}
+    candidates=[]
+    historical_candidates=[]
+    attributes=attribution_map(doc)
+    marker=re.compile(r'\b(?:we\s+(?:direct|order|quash|allow|dismiss|clarify)|(?:shall|must)\s+(?:be\s+)?(?:pay|deposit|refund|release|continue|remain)|within\b.{0,45}\b(?:weeks?|months?|days?)|subject\s+to|stands?\s+(?:allowed|dismissed)|appeals?\s+succeed|larger\s+bench)\b',re.I)
+    for s in doc.sentences:
+        if not s['quoted'] and marker.search(s['sentence']) and s['id'] not in decision_ids:
+            entry=_entry(s,'independent broad operative-language screen; attribution is heuristic')
+            entry['attribution']=attributes[s['id']]
+            historical_interval=elapsed_history(s['sentence'])
+            if historical_interval or attributes[s['id']]['label'] in {'party_submission','reported_material','document_or_correspondence'}:
+                if historical_interval:entry['screening_note']='Elapsed time in historical narration, without an obligation cue.'
+                historical_candidates.append(entry)
+            else:
+                candidates.append(entry)
+    missing=[k for k,v in result['sections'].items() if not v]
+    flags=[]
+    if invalid: flags.append('SOURCE_MISMATCH')
+    if missing: flags.append('MISSING_SECTION')
+    if candidates: flags.append('POSSIBLE_OMITTED_DIRECTIONS')
+    if any(d['method']=='ocr' or not d['readable'] or d['ocr_error'] or d['replacement_characters'] for d in doc.diagnostics):
+        flags.append('EXTRACTION_REVIEW')
+    if result['summary_words']>result['word_limit']: flags.append('BUDGET_OVERFLOW')
+    if any('No explicit issue' in w for w in result['warnings']): flags.append('ISSUE_CONTEXT_ONLY')
+    if any('quotation' in w for w in result['warnings']): flags.append('QUOTE_ATTRIBUTION_REVIEW')
+    if result['model'].get('mode')=='evidence_only': flags.append('MODEL_NOT_RUN')
+    if result['model'].get('long_sentence_ids'): flags.append('ENCODER_TRUNCATION_REVIEW')
+    return dict(status='blocked_source_mismatch' if invalid else 'review_required' if flags else 'source_checks_passed',
+                flags=flags,invalid_evidence_ids=invalid,missing_sections=missing,
+                exact_source_check_passed=not invalid, selected_evidence_count=len(selected),
+                possible_omitted_directions=candidates, human_validation_required=True,
+                reported_or_historical_direction_mentions=historical_candidates,
+                attribution_method='uncalibrated text rules; not independent human attribution validation',
+                legal_accuracy_measured=False,
+                note='Exact source matching checks copying, not legal interpretation, attribution or completeness. Review the source and the omission candidates.')
+
+def render_markdown(result):
+    audit=result['audit']
+    out=[f'# Evidence-grounded case brief — {result["source_file"]}',
+         f'**Machine check:** {audit["status"]}. **Human review required.**',
+         f'Words: {result["summary_words"]}; requested budget: {result["word_limit"]}.',
+         'Extracts are verbatim apart from whitespace. Background can contain allegations and earlier rulings.']
+    if result['caption_verbatim']:
+        out+=['## Caption (verbatim; may contain multiple connected matters)',result['caption_verbatim']]
+    for key,title in SECTION_TITLES.items():
+        if key=='issue':
+            title={'explicit_source_issue':'Issue stated in the source',
+                   'source_dispute_description':'Legal dispute described in the source (no explicit question)',
+                   'reported_competing_positions':'Dispute context: reported competing positions',
+                   'procedural_context':'Procedural context (controlling issue not reliably identified)'}.get(result.get('issue_mode'),title)
+        out.append('## '+title)
+        if key=='reasoning':
+            blocks={}
+            for e in result['sections'][key]:blocks.setdefault(e.get('reasoning_block_id',e['id']),[]).append(e)
+            for entries in blocks.values():
+                pages=sorted({f['page'] for e in entries for f in e['fragments']})
+                ids=', '.join(str(e['id']) for e in entries)
+                out.append(f'**[pages {", ".join(map(str,pages))}; evidence {ids}]** '+' '.join(e['sentence'] for e in entries))
+            if not blocks:out.append('Not reliably identified. Consult the judgment.')
+            continue
+        for e in result['sections'][key]:
+            pages=str(e['page']) if e['page']==e['page_end'] else f'{e["page"]}–{e["page_end"]}'
+            out.append(f'- **[p. {pages}; evidence {e["id"]}]** {e["sentence"]}')
+        if not result['sections'][key]: out.append('Not reliably identified. Consult the judgment.')
+    out+=['## Review notes']+[f'- {w}' for w in result['warnings']]
+    out += ['- '+audit['note']]
+    out.append('- Issue extracts may address only part of the dispute. Check that every controlling issue is covered; procedural or competing-position extracts are not court-formulated questions.')
+    if audit.get('reported_or_historical_direction_mentions'):
+        out.append(f'- {len(audit["reported_or_historical_direction_mentions"])} direction mentions were classified as reported material or submissions. They remain in the JSON audit for review and are not counted as current-order omissions.')
+    if audit['possible_omitted_directions']:
+        out+=['## Additional passages to check (may be historical; not asserted as current orders)']
+        for e in audit['possible_omitted_directions']:
+            out.append(f'- **[p. {e["page"]}–{e["page_end"]}; evidence {e["id"]}]** {e["sentence"]}')
+    return '\n\n'.join(out)
+
+def summarize_file(filename,budget=800,model=None,model_choice=None,ocr='auto'):
+    doc=read_document(filename,ocr=ocr)
+    predictions,info=({}, {'mode':'evidence_only'}) if model is None else model.score_document(doc,model_choice)
+    result=build_brief(doc,budget,predictions,info)
+    result['audit']=audit_brief(doc,result)
+    if not result['audit']['exact_source_check_passed']:
+        raise RuntimeError('Evidence verification failed. Summary withheld; inspect extraction.')
+    result['markdown']=render_markdown(result)
+    return result
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_cli.py
+"""Batch entry point used by the isolated Colab environment and local CLI."""
+import argparse
+import csv
+import json
+from pathlib import Path
+import zipfile
+from stage44_brief import summarize_file
+
+def safe_cell(value):
+    value=str(value)
+    return "'"+value if value.lstrip().startswith(('=','+','-','@')) else value
+
+def run_batch(paths, output_dir, budget=800, model=None, model_choice=None, ocr='auto'):
+    output=Path(output_dir)
+    output.mkdir(parents=True,exist_ok=True)
+    records,review=[],[]
+    if len(paths)>30: raise ValueError('Maximum 30 input documents per batch.')
+    for index,path in enumerate(paths,1):
+        folder=output/f'judgment_{index:02d}'
+        folder.mkdir(exist_ok=True)
+        try:
+            result=summarize_file(path,budget,model,model_choice,ocr)
+            (folder/'summary.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+            (folder/'summary.md').write_text(result['markdown'],encoding='utf-8')
+            records.append(dict(source_file=Path(path).name,processed=True,status=result['audit']['status'],
+                                flags=result['audit']['flags'],words=result['summary_words'],
+                                model=result['model'],result_folder=folder.name))
+            for section,entries in result['sections'].items():
+                review.append(dict(source_file=Path(path).name,section=section,
+                                   evidence_ids=';'.join(str(e['id']) for e in entries),
+                                   source_pages=';'.join(f'{e["page"]}-{e["page_end"]}' for e in entries),
+                                   summary=' '.join(e['sentence'] for e in entries),
+                                   machine_flags=';'.join(result['audit']['flags']),
+                                   factuality_1_to_5='',completeness_1_to_5='',attribution_1_to_5='',
+                                   critical_error_yes_no='',reviewer_notes=''))
+        except Exception as exc:
+            records.append(dict(source_file=Path(path).name,processed=False,status='failed',
+                                error=f'{type(exc).__name__}: {exc}',result_folder=folder.name))
+        print(f'[{index}/{len(paths)}] {Path(path).name}: {records[-1]["status"]}',flush=True)
+    fields=['source_file','section','evidence_ids','source_pages','summary','machine_flags',
+            'factuality_1_to_5','completeness_1_to_5','attribution_1_to_5','critical_error_yes_no','reviewer_notes']
+    with (output/'manual_quality_review.csv').open('w',newline='',encoding='utf-8-sig') as f:
+        writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader()
+        writer.writerows({k:safe_cell(v) for k,v in row.items()} for row in review)
+    report=dict(processed=sum(r['processed'] for r in records),failed=sum(not r['processed'] for r in records),
+                machine_source_checks_passed=sum(r['status']=='source_checks_passed' for r in records),
+                human_review_required=True,legal_accuracy_measured=False,documents=records)
+    (output/'batch_report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+    archive=output.with_suffix('.zip')
+    # Only this run's files: do not accidentally publish unrelated files in an output directory.
+    files=[output/'batch_report.json',output/'manual_quality_review.csv']
+    files += [output/r['result_folder']/name for r in records if r['processed'] for name in ['summary.json','summary.md']]
+    with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
+        for file in files: z.write(file,file.relative_to(output))
+    return report,str(archive)
+
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument('inputs',nargs='+');p.add_argument('--output',required=True)
+    p.add_argument('--encoder');p.add_argument('--bundle');p.add_argument('--model-choice')
+    p.add_argument('--evidence-only',action='store_true')
+    p.add_argument('--budget',type=int,default=800)
+    p.add_argument('--ocr',choices=['auto','off','force'],default='auto')
+    args=p.parse_args()
+    model=None
+    if not args.evidence_only:
+        if not args.encoder or not args.bundle: p.error('Set --encoder and --bundle or explicitly choose --evidence-only.')
+        from stage44_model import FullDocumentRanker
+        model=FullDocumentRanker(args.encoder,args.bundle)
+    paths=[]
+    for value in args.inputs:
+        path=Path(value)
+        paths.extend(sorted(p for p in path.iterdir() if p.suffix.lower() in {'.pdf','.txt'}) if path.is_dir() else [path])
+    if not paths: p.error('No PDF or TXT inputs found.')
+    report,archive=run_batch(paths,args.output,args.budget,model,args.model_choice,args.ocr)
+    print(json.dumps({k:v for k,v in report.items() if k!='documents'},indent=2))
+    print('Results:',archive)
+    if report['failed']: raise SystemExit(2)
+
+if __name__=='__main__':main()
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_model.py
+"""Frozen Stage 3.6 weights with full-document sliding-window inference.
+Checkpoint hashes and strict state loading are retained. This is a new inference
+regime; old held-out ROUGE scores do not automatically apply.
+"""
+from pathlib import Path
+import hashlib, io, json, zipfile
+import numpy as np
+import torch
+from torch import nn
+from stage44_windows import window_ranges, aggregate_windows
+LABELS = ['ANALYSIS','ARG_PETITIONER','ARG_RESPONDENT','FAC','ISSUE','NONE','PREAMBLE',
+          'PRE_NOT_RELIED','PRE_RELIED','RATIO','RLC','RPC','STA']
+MODEL_NAMES = {
+    'Best ROUGE-1/2: TF-IDF trained (no roles)':'L120_tfidf_budgeted_no_roles',
+    'Role-aware: Greedy ROUGE trained':'L120_greedy_rouge_roles',
+}
+ROLE_NAMES = {
+    'FAC':'Facts','PREAMBLE':'Background','ISSUE':'Legal issues',
+    'ARG_PETITIONER':'Petitioner arguments','ARG_RESPONDENT':'Respondent arguments',
+    'ANALYSIS':'Court reasoning','RATIO':'Legal reasoning','RLC':'Lower court ruling',
+    'RPC':'Present court ruling','STA':'Statutory provision','PRE_RELIED':'Precedent relied on',
+    'PRE_NOT_RELIED':'Precedent not relied on','NONE':'Other',
+}
+SECTIONS = {'Facts / background': {'FAC','PREAMBLE'}, 'Legal issues': {'ISSUE'},
+            'Arguments': {'ARG_PETITIONER','ARG_RESPONDENT'},
+            'Reasoning / precedents': {'ANALYSIS','RATIO','PRE_RELIED','PRE_NOT_RELIED','STA'},
+            'Rulings': {'RPC','RLC'}}
+
+
+def checkpoint_signature(path: str | Path) -> str:
+    """Exact fingerprint routine used for Stage 2.2 -> Stage 2.3/3.6 binding."""
+    h=hashlib.sha256()
+    for name in ('config.json','tokenizer.json','model.safetensors'):
+        p=Path(path)/name
+        if not p.is_file():
+            raise FileNotFoundError(f'Missing trained encoder checkpoint file: {p}')
+        h.update(name.encode());h.update(str(p.stat().st_size).encode())
+        with p.open('rb') as f:
+            h.update(f.read(128*1024))
+            if p.stat().st_size>128*1024:
+                f.seek(-128*1024,2)
+                h.update(f.read(128*1024))
+    return h.hexdigest()
+
+
+def _digest(data:bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+class SentenceBiLSTM(nn.Module):
+    def __init__(self,in_dim=768,n_labels=13,hidden=128,dropout=0.3):
+        super().__init__()
+        self.norm=nn.LayerNorm(in_dim)
+        self.drop=nn.Dropout(dropout)
+        self.lstm=nn.LSTM(in_dim,hidden,num_layers=1,batch_first=True,bidirectional=True)
+        self.classifier=nn.Linear(hidden*2,n_labels)
+    def forward(self,x,lengths):
+        x=self.drop(self.norm(x))
+        packed=nn.utils.rnn.pack_padded_sequence(x,lengths.cpu(),batch_first=True,enforce_sorted=False)
+        out,_=self.lstm(packed)
+        padded,_=nn.utils.rnn.pad_packed_sequence(out,batch_first=True,total_length=x.shape[1])
+        return self.classifier(self.drop(padded))
+
+
+class SentenceSelector(nn.Module):
+    def __init__(self,with_roles:bool):
+        super().__init__()
+        dim=768+1+(13 if with_roles else 0)
+        self.net=nn.Sequential(nn.LayerNorm(dim),nn.Linear(dim,160),nn.ReLU(),
+                               nn.Dropout(0.25),nn.Linear(160,1))
+    def forward(self,x):
+        return self.net(x).squeeze(-1)
+
+
+class FullDocumentRanker:
+    """Load frozen checkpoints once, then run user PDFs/TXTs locally in Colab."""
+    def __init__(self,encoder_dir,model_bundle,device=None,batch_size=12):
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+        self.encoder_dir=Path(encoder_dir)
+        self.model_bundle=Path(model_bundle)
+        self.device=torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
+        self.batch_size=int(batch_size) if self.device.type=='cuda' else min(3,int(batch_size))
+        self.signature=checkpoint_signature(self.encoder_dir)
+
+        with zipfile.ZipFile(self.model_bundle) as z:
+            manifest=json.loads(z.read('manifest.json'))
+            if self.signature!=manifest['encoder_signature']:
+                raise RuntimeError('Fine-tuned InLegalBERT fingerprint does not match the saved Stage 3.6 run. Do not use a base model or another checkpoint.')
+            head_zip_bytes=z.read('stage2_3_bilstm_head_bundle.zip')
+            if _digest(head_zip_bytes)!=manifest['head_zip_digest']:
+                raise RuntimeError('BiLSTM head archive does not match the Stage 3.6 manifest.')
+            model_data={k:z.read(k+'.pt') for k in MODEL_NAMES.values()}
+            for k,blob in model_data.items():
+                if _digest(blob)!=manifest['selector_sha256'][k]:
+                    raise RuntimeError('Selector checkpoint hash mismatch for '+k)
+        with zipfile.ZipFile(io.BytesIO(head_zip_bytes)) as head_zip:
+            config=json.loads(head_zip.read('bilstm_softmax/head_config.json'))
+            saved=torch.load(io.BytesIO(head_zip.read('bilstm_softmax/best_head.pt')),map_location='cpu',weights_only=True)
+        if config['feature_checkpoint_signature']!=self.signature or saved['feature_signature']!=self.signature:
+            raise RuntimeError('BiLSTM rhetorical-role head does not match encoder fingerprint.')
+        self.head=SentenceBiLSTM(hidden=config['cfg']['hidden_size'],dropout=config['cfg']['dropout']).to(self.device)
+        self.head.load_state_dict(saved['bilstm'],strict=True)
+        self.head.eval()
+
+        self.selectors={}
+        for key,payload in model_data.items():
+            ckpt=torch.load(io.BytesIO(payload),map_location='cpu',weights_only=True)
+            if ckpt['signature']!=manifest['experiment_signature'] or ckpt['experiment']!=key:
+                raise RuntimeError('Selector experiment signature mismatch: '+key)
+            if ckpt['max_sentences']!=120:
+                raise RuntimeError('Stage 4 expects the original 120-sentence selector.')
+            model=SentenceSelector(with_roles=bool(ckpt['use_roles'])).to(self.device)
+            model.load_state_dict(ckpt['state_dict'],strict=True)
+            self.selectors[key]=(model.eval(),bool(ckpt['use_roles']))
+
+        self.tokenizer=AutoTokenizer.from_pretrained(str(self.encoder_dir),use_fast=True,local_files_only=True)
+        self.mark_prev=self.tokenizer.encode('PREVIOUS:',add_special_tokens=False)
+        self.mark_next=self.tokenizer.encode('NEXT:',add_special_tokens=False)
+        self.collator=DataCollatorWithPadding(tokenizer=self.tokenizer,return_tensors='pt')
+        self.encoder=AutoModelForSequenceClassification.from_pretrained(str(self.encoder_dir),local_files_only=True).to(self.device).eval()
+        if self.encoder.config.num_labels!=13 or [self.encoder.config.id2label[i] for i in range(13)]!=LABELS:
+            raise RuntimeError('Encoder config does not match our 13 OpenNyAI rhetorical roles.')
+        for p in self.encoder.parameters():p.requires_grad_(False)
+
+    def _pack(self,tgt,previous,nxt,max_length=256,target_cap=192):
+        target=list(tgt[:min(target_cap,max_length-3)])
+        budget=max_length-len(target)-3
+        pmark=self.mark_prev if previous else []
+        nmark=self.mark_next if nxt else []
+        free=budget-len(pmark)-len(nmark)
+        if free<0:raise ValueError('Invalid context token budget.')
+        prev_cap=min(len(previous),(free+1)//2) if previous else 0
+        next_cap=min(len(nxt),free//2) if nxt else 0
+        left=free-prev_cap-next_cap
+        prev_cap+=min(len(previous)-prev_cap,left)
+        left=free-prev_cap-next_cap
+        next_cap+=min(len(nxt)-next_cap,left)
+        ctx=pmark+(list(previous[-prev_cap:]) if prev_cap else [])+nmark+(list(nxt[:next_cap]) if next_cap else [])
+        ids=[self.tokenizer.cls_token_id]+target+[self.tokenizer.sep_token_id]+ctx+[self.tokenizer.sep_token_id]
+        segment0=len(target)+2
+        if len(ids)>256:raise RuntimeError('Token packing overflow.')
+        return {'input_ids':ids,'attention_mask':[1]*len(ids),
+                'token_type_ids':[0]*segment0+[1]*(len(ids)-segment0)}
+
+    @torch.inference_mode()
+    def _features(self,sentences:list[str],original_indices:list[int]):
+        raw=self.tokenizer(sentences,add_special_tokens=False,padding=False,return_attention_mask=False)['input_ids']
+        emb=np.empty((len(sentences),768),dtype=np.float32)
+        for start in range(0,len(sentences),self.batch_size):
+            end=min(start+self.batch_size,len(sentences))
+            packed=[self._pack(raw[i],raw[i-1] if i and original_indices[i-1]+1==original_indices[i] else [],
+                               raw[i+1] if i+1<len(sentences) and original_indices[i]+1==original_indices[i+1] else [])
+                    for i in range(start,end)]
+            batch={k:v.to(self.device) for k,v in self.collator(packed).items()}
+            # Exactly the frozen Stage 3.6 feature extraction (CLS from base_model).
+            with torch.amp.autocast(device_type='cuda',enabled=self.device.type=='cuda'):
+                cls=self.encoder.base_model(**batch,return_dict=True).last_hidden_state[:,0,:]
+            emb[start:end]=cls.float().cpu().numpy().astype(np.float16).astype(np.float32)
+        starts=[0]+[i for i in range(1,len(sentences)) if original_indices[i]!=original_indices[i-1]+1]
+        ends=starts[1:]+[len(sentences)]
+        role_parts=[]
+        for a,b in zip(starts,ends):
+            logits=self.head(torch.from_numpy(emb[a:b].astype(np.float16).astype(np.float32)).unsqueeze(0).to(self.device),
+                             torch.tensor([b-a],dtype=torch.long))[0]
+            role_parts.append(logits.float().softmax(-1).cpu().numpy().astype(np.float16).astype(np.float32))
+        return emb,np.concatenate(role_parts,axis=0)
+
+    def score_document(self, document, model_choice=None):
+        model_choice=model_choice or list(MODEL_NAMES)[0]
+        if model_choice not in MODEL_NAMES:
+            raise ValueError('Unknown selector checkpoint.')
+        sentences=[s['sentence'] for s in document.sentences]
+        n=len(sentences)
+        if not n: raise ValueError('No source sentences to score.')
+        selector,with_roles=self.selectors[MODEL_NAMES[model_choice]]
+        def evaluate(a,b):
+            cls,roles=self._features(sentences[a:b],list(range(a,b)))
+            positions=np.arange(a,b,dtype=np.float32)[:,None]/max(1,n-1)
+            features=np.concatenate([cls,positions]+([roles] if with_roles else []),axis=1)
+            with torch.inference_mode():
+                scores=selector(torch.from_numpy(features).to(self.device)).sigmoid().cpu().numpy()
+            return np.concatenate([scores[:,None],roles],axis=1)
+        values,counts=aggregate_windows(n,evaluate)
+        predictions={}
+        for i in range(n):
+            r=int(values[i,1:].argmax())
+            predictions[i]=dict(importance_score=float(values[i,0]),role_code=LABELS[r],
+                                role_confidence=float(values[i,r+1]),windows_scored=int(counts[i]))
+        lengths=[len(self.tokenizer.encode(s,add_special_tokens=False)) for s in sentences]
+        long_ids=[i for i,k in enumerate(lengths) if k>192]
+        info=dict(mode='trained_full_document',selector=MODEL_NAMES[model_choice],
+                  encoder_signature=self.signature,source_sentences=n,scored_sentences=len(predictions),
+                  sentence_coverage=1.0,window_size=120,overlap=30,
+                  window_count=len(list(window_ranges(n))),long_sentence_ids=long_ids,
+                  long_sentence_note='The encoder sees at most 192 target tokens per sentence, as trained. Full sentence text remains in the evidence engine.',
+                  scores_are_calibrated=False,old_benchmark_scores_apply=False)
+        return predictions,info
+
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_source.py
+"""Page-addressable, non-generative extraction. Offsets refer to exported canonical_pages.
+
+Only whitespace is normalized. Never repair names, currencies, numbers or negation.
+Evidence remains independently checkable even when the source PDF needs OCR.
+"""
+from __future__ import annotations
+from collections import Counter
+from dataclasses import dataclass, asdict
+from pathlib import Path
+import hashlib
+import re
+import fitz
+
+def norm(text):
+    return re.sub(r'\s+', ' ', text).strip()
+
+@dataclass
+class Document:
+    source_file: str
+    sha256: str
+    pages: list
+    paragraphs: list
+    sentences: list
+    diagnostics: list
+    warnings: list
+    caption: str
+
+    def to_dict(self):
+        return asdict(self)
+
+HEADING = re.compile(r'^(?:J\s*U\s*D\s*G\s*(?:E\s*)?M\s*E\s*N\s*T|O\s*R\s*D\s*E\s*R)\s*$', re.I)
+NUMBER = re.compile(r'^[‘“"\s]*(\d{1,3}(?:\.\d{1,2}){0,2})(?:[.)])(?:\s+|$)')
+FURNITURE = re.compile(r'^(?:Page\s+\d+\s+of\s+\d+|\d{1,3}|Signature Not Verified|Digitally signed by.*|Date:\s*\d.*|Reason:|\d{2}:\d{2}:\d{2}.*)$', re.I)
+CASE_FOOTER = re.compile(r'^(?:Civil|Criminal|Arbitration|Writ|Review|Contempt|Special Leave|SLP|S\.?L\.?P\.?)\s*.*(?:No\.|Nos\.|of\s+20\d\d)', re.I)
+SIGNED = re.compile(r'^(?:[.\s…\uFFFD]{5,}.*\b(?:J|CJI)\.|NEW DELHI\s*[;,]?$)', re.I)
+ABBREVIATION = re.compile(r'\b(?:Mr|Mrs|Ms|Dr|Prof|Smt|Shri|Rs|No|Nos|Co|Ltd|Inc|vs|v|Hon|Art|Sec|para|pp|ibid|Ors|Anr|Jr|Sr)\.$', re.I)
+
+def sentence_ranges(text):
+    """Boundaries keep decimal amounts, legal abbreviations and initials intact."""
+    start = 0
+    for m in re.finditer(r'[.!?][”"\u2019\)]*\s+', text):
+        p = m.start()
+        prefix = text[max(0, p-25):p+1]
+        if text[p]=='.' and re.fullmatch(r'(?:ii|iii|iv|vi|vii|viii|ix|xi|xii)\.',text[start:p+1].strip(),re.I):
+            continue # A roman list marker starts an item, never a sentence alone.
+        # Protect the abbreviation only in its legal-code context. A global
+        # "Cr." exception would also join unrelated sentences ending in crore.
+        if text[p] == '.' and re.search(r'\bCr\.$', prefix, re.I) and re.match(r'\s*P\.?\s*C\b', text[p+1:], re.I):
+            continue
+        if text[p] == '.' and (ABBREVIATION.search(prefix) or re.search(r'\b(?:[A-Za-z]\.)+$', prefix)):
+            continue
+        end = m.end()
+        yield start, m.start()+len(m.group().rstrip())
+        start = end
+    if start < len(text):
+        yield start, len(text)
+
+def cut_fragments(fragments, start, end):
+    out, offset = [], 0
+    for f in fragments:
+        a, b = max(start, offset), min(end, offset+len(f['text']))
+        if a < b:
+            x, y = f['start']+a-offset, f['start']+b-offset
+            out.append(dict(page=f['page'], start=x, end=y, text=f['text'][a-offset:b-offset]))
+        offset += len(f['text'])+1
+    return out
+
+def quote_mask(text):
+    stack,mask=[],[]
+    for i,c in enumerate(text):
+        mask.append(bool(stack))
+        if c in '‘“': stack.append('’' if c=='‘' else '”')
+        elif c in '’”' and c in stack:
+            if c=='’' and i and i+1<len(text) and text[i-1].isalpha() and text[i+1].isalpha(): continue
+            del stack[len(stack)-1-stack[::-1].index(c):]
+        elif c=='"':
+            if stack and stack[-1]=='"': stack.pop()
+            else: stack.append('"')
+    return mask
+
+def _native_lines(page):
+    lines = []
+    for block in page.get_text('dict', sort=True)['blocks']:
+        for line in block.get('lines', []):
+            raw=''.join(s['text'] for s in line['spans'])
+            mask=[]
+            for span in line['spans']:
+                superscript=bool(span['flags'] & 1) and span['text'].strip().isdigit()
+                mask.extend([superscript]*len(span['text']))
+            text, normalized_mask='',[]
+            for token in re.finditer(r'\S+',raw):
+                if text:
+                    text+=' '; normalized_mask.append(False)
+                text+=token.group(); normalized_mask.extend(mask[token.start():token.end()])
+            skips=[]
+            for match in re.finditer('1+', ''.join('1' if x else '0' for x in normalized_mask)):
+                skips.append((match.start(),match.end()))
+            if text:
+                lines.append(dict(text=text, x=line['bbox'][0], y=line['bbox'][1],
+                                  size=max(s['size'] for s in line['spans']),skip_ranges=skips))
+    lines=sorted(lines, key=lambda x: (round(x['y'], 1), x['x']))
+    joined=[]
+    for line in lines:
+        if joined and abs(joined[-1]['y']-line['y'])<.8 and abs(joined[-1]['size']-line['size'])<1:
+            shift=len(joined[-1]['text'])+1
+            joined[-1]['skip_ranges'].extend((a+shift,b+shift) for a,b in line['skip_ranges'])
+            joined[-1]['text']+=' '+line['text']
+        else:
+            joined.append(dict(line))
+    return joined
+
+def read_document(filename, ocr='auto', max_pages=200):
+    path = Path(filename)
+    if ocr not in {'auto','off','force'}:
+        raise ValueError('OCR mode must be auto, off or force.')
+    if path.stat().st_size > 50_000_000:
+        raise ValueError('Input exceeds the 50 MB limit. Split the document first.')
+    diagnostics, warnings, page_lines = [], [], []
+    if path.suffix.lower() == '.pdf':
+        with fitz.open(path) as pdf:
+            if pdf.needs_pass:
+                raise ValueError('Unlock the password-protected PDF before processing.')
+            if len(pdf) > max_pages:
+                raise ValueError(f'Input exceeds {max_pages} pages; no pages were silently discarded.')
+            for pi, page in enumerate(pdf, 1):
+                lines = _native_lines(page)
+                native = ' '.join(x['text'] for x in lines)
+                suspect = len(re.findall(r'[A-Za-z]{2,}', native)) < 15 or native.count('\uFFFD') > 8
+                method, error = 'native', None
+                if ocr == 'force' or (ocr == 'auto' and suspect):
+                    try:
+                        import pytesseract
+                        from PIL import Image
+                        pix = page.get_pixmap(dpi=200)
+                        image = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+                        data = pytesseract.image_to_data(image, lang='eng', config='--psm 3',
+                                                        timeout=60, output_type=pytesseract.Output.DICT)
+                        groups = {}
+                        for i, word in enumerate(data['text']):
+                            if word.strip():
+                                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                                groups.setdefault(key, []).append(i)
+                        candidate = [dict(text=norm(' '.join(data['text'][i] for i in ids)),
+                                          x=data['left'][ids[0]]*72/200, y=data['top'][ids[0]]*72/200,
+                                          size=12) for ids in groups.values()]
+                        if sum(len(x['text']) for x in candidate) > 60:
+                            lines, method = candidate, 'ocr'
+                            warnings.append(f'Page {pi}: OCR text requires visual verification.')
+                        else:
+                            error = 'OCR produced insufficient text'
+                    except Exception as exc:
+                        error = type(exc).__name__
+                text = ' '.join(x['text'] for x in lines)
+                readable = len(re.findall(r'[A-Za-z]{2,}', text)) >= 10
+                diagnostics.append(dict(page=pi, method=method, characters=len(text), readable=readable,
+                                        replacement_characters=text.count('\uFFFD'), ocr_error=error))
+                if not readable or error:
+                    warnings.append(f'Page {pi}: extraction needs review ({error or "sparse/unreadable text"}).')
+                # Remove individual signature metadata lines only, not a body-containing block.
+                page_lines.append((lines, page.rect.height))
+    elif path.suffix.lower() == '.txt':
+        text = path.read_text(encoding='utf-8-sig', errors='strict')
+        lines = [dict(text=norm(t),x=0,y=i*16,size=12) for i,t in enumerate(text.splitlines()) if norm(t)]
+        page_lines = [(lines, max(100, len(lines)*16))]
+        diagnostics = [dict(page=1, method='text',characters=len(text),readable=bool(text.strip()),replacement_characters=text.count('\uFFFD'),ocr_error=None)]
+    else:
+        raise ValueError('Use an English judgment in PDF or UTF-8 TXT format.')
+    return assemble(path.name, hashlib.sha256(path.read_bytes()).hexdigest(), page_lines, diagnostics, warnings)
+
+def assemble(name, digest, page_lines, diagnostics, warnings):
+    pages, paragraphs, caption = [], [], []
+    current, signed, appendix, quote_depth = None, False, False, 0
+    quote_stack = []
+    first_lines = page_lines[0][0] if page_lines else []
+    has_heading = any(HEADING.match(x['text']) for x in first_lines)
+    body = not has_heading
+    global_sizes=Counter()
+    for lines,_ in page_lines:
+        for line in lines:
+            global_sizes[round(line['size'])]+=len(line['text'])
+    global_body_size=global_sizes.most_common(1)[0][0] if global_sizes else 12
+
+    def flush():
+        nonlocal current
+        if current and current['fragments']:
+            current['text'] = ' '.join(f['text'] for f in current['fragments'])
+            current['id'] = len(paragraphs)
+            current['page'] = current['fragments'][0]['page']
+            current['page_end'] = current['fragments'][-1]['page']
+            paragraphs.append(current)
+        current = None
+
+    for pi, (lines, height) in enumerate(page_lines, 1):
+        canonical = ' '.join(x['text'] for x in lines)
+        pages.append(canonical)
+        offset = 0
+        # Native geometry separates footnotes/signature overlays without deleting body text near margins.
+        sizes = Counter()
+        for line in lines:
+            sizes[round(line['size'])] += len(line['text'])
+        body_size = sizes.most_common(1)[0][0] if sizes else 12
+        for line in lines:
+            text, start = line['text'], offset
+            offset += len(text)+1
+            if re.search(r'R\s*E\s*C\s*O\s*R\s*D\s+O\s*F\s+P\s*R\s*O\s*C\s*E\s*E\s*D\s*I\s*N\s*G\s*S', text, re.I):
+                flush(); appendix = True
+            if appendix or signed:
+                continue
+            if pi == 1 and not body:
+                if HEADING.match(text):
+                    body = True
+                else:
+                    caption.append(text)
+                continue
+            if HEADING.match(text):
+                flush(); continue
+            if SIGNED.match(text):
+                # A quoted earlier order can have its own signature half-way through a judgment.
+                if pi >= len(page_lines)-1 and not quote_stack:
+                    flush(); signed = True
+                continue
+            if FURNITURE.match(text):
+                continue
+            if round(line['size']) <= global_body_size-3:
+                continue
+            if line['y'] > height*.88 and CASE_FOOTER.match(text):
+                continue
+            if re.fullmatch(r'[A-Z .\-]+,?\s+J\.?', text) and not paragraphs and current is None:
+                continue
+            if re.match(r'^(?:FACTS|ANALYSIS|REASONS|CONCLUSION|POST-SCRIPT|ISSUES|SUBMISSIONS)\s*:?$', text, re.I):
+                flush(); continue
+            if re.fullmatch(r'[A-Z][A-Z /,()0-9-]{4,}\s*:\s*-?',text):
+                flush(); continue
+            closing = {'‘':'’','“':'”','"':'"'}.get(text[:1])
+            previous_text = current['fragments'][-1]['text'] if current and current['fragments'] else ''
+            opens_block = bool(closing) and not quote_stack and (bool(NUMBER.match(text)) or previous_text.endswith(':'))
+            if opens_block:
+                flush()
+            num = NUMBER.match(text)
+            # Numbered paragraphs must not be merged into giant page-long blocks.
+            if num:
+                flush()
+            elif current and current['number'] is None and current['fragments'][-1]['text'].endswith(('.', '?', '!')):
+                flush()
+            if current is None:
+                current = dict(fragments=[], number=num.group(1) if num else None,
+                               quoted=bool(quote_stack) or opens_block, quote_uncertain=False)
+            if num:
+                start += num.end()
+                text = text[num.end():]
+            line_offset=offset-len(line['text'])-1
+            spans=[(start-line_offset,len(line['text']))]
+            for skip_a,skip_b in line.get('skip_ranges',[]):
+                parts=[]
+                for a,b in spans:
+                    if skip_b<=a or skip_a>=b: parts.append((a,b))
+                    else:
+                        if a<skip_a: parts.append((a,skip_a))
+                        if skip_b<b: parts.append((skip_b,b))
+                spans=parts
+            for a,b in spans:
+                piece=line['text'][a:b]
+                if not piece.strip(): continue
+                left=len(piece)-len(piece.lstrip())
+                right=len(piece.rstrip())
+                piece_start=line_offset+a+left
+                fragment = dict(page=pi, start=piece_start, end=line_offset+a+right, text=piece.strip())
+                # Adjacent lines form one verifiable page span.
+                fs = current['fragments']
+                if fs and fs[-1]['page']==pi and canonical[fs[-1]['end']:piece_start]==' ':
+                    fs[-1]['end']=fragment['end']; fs[-1]['text']+=' '+fragment['text']
+                else:
+                    fs.append(fragment)
+            raw = line['text']
+            was_quoted = bool(quote_stack) or opens_block
+            for ci, char in enumerate(raw):
+                if char in '‘“':
+                    quote_stack.append('’' if char=='‘' else '”')
+                elif char in '’”' and char in quote_stack:
+                    # Apostrophes inside a word are not quotation boundaries.
+                    if char=='’' and ci and ci+1<len(raw) and raw[ci-1].isalpha() and raw[ci+1].isalpha():
+                        continue
+                    close_at=len(quote_stack)-1-quote_stack[::-1].index(char)
+                    if close_at != len(quote_stack)-1:
+                        warnings.append('Mixed quotation styles detected; verify precedent attribution.')
+                    del quote_stack[close_at:]
+                elif char=='"':
+                    if quote_stack and quote_stack[-1]=='"': quote_stack.pop()
+                    else: quote_stack.append('"')
+            if current and current['quoted'] and not quote_stack:
+                flush()
+    flush()
+    if sum(len(p) for p in pages) > 2_000_000:
+        raise ValueError('Document exceeds 2 million characters; split it before processing.')
+    if not paragraphs:
+        raise ValueError('No readable judgment body found. Check the PDF or use OCR.')
+    if quote_stack:
+        warnings.append('Unbalanced quotation marks: verify quoted-precedent attribution.')
+    sentences = []
+    for p in paragraphs:
+        mask=quote_mask(p['text'])
+        attributed=bool(re.search(r'\b(?:held|observed|quoted|reproduce|as follows|said|letter|correspondence|findings|submission)\b.{0,160}(?::|[“\"])',p['text'],re.I))
+        for a,b in sentence_ranges(p['text']):
+            fs = cut_fragments(p['fragments'],a,b)
+            text = ' '.join(f['text'] for f in fs)
+            if not text.strip():
+                continue
+            quoted_chars=sum(mask[a:b])
+            substantial_quote=quoted_chars >= 40 and quoted_chars/max(1,b-a) >= .45
+            sentences.append(dict(id=len(sentences), paragraph_id=p['id'], sentence=text, fragments=fs,
+                                  page=fs[0]['page'],page_end=fs[-1]['page'],
+                                  quoted=p['quoted'] or substantial_quote or (attributed and quoted_chars > 0)))
+    return Document(name,digest,pages,paragraphs,sentences,diagnostics,list(dict.fromkeys(warnings)), ' '.join(caption))
+
+def verify_evidence(entry, pages):
+    fs = entry.get('fragments', [])
+    if not fs or entry.get('sentence') != ' '.join(f.get('text','') for f in fs):
+        return False
+    if entry.get('page') != fs[0]['page'] or entry.get('page_end') != fs[-1]['page']:
+        return False
+    for f in fs:
+        if not (1 <= f['page'] <= len(pages) and 0 <= f['start'] < f['end'] <= len(pages[f['page']-1])):
+            return False
+        if pages[f['page']-1][f['start']:f['end']] != f['text']:
+            return False
+    return True
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/src/stage44_windows.py
+"""Bounded-context windows with auditable coverage; no 120-sentence subsampling."""
+import numpy as np
+
+def window_ranges(n, size=120, overlap=30):
+    if n < 0 or size < 1 or not 0 <= overlap < size:
+        raise ValueError('Invalid window dimensions.')
+    start=0
+    while start<n:
+        end=min(n,start+size)
+        yield start,end
+        if end==n: break
+        start=end-overlap
+
+def aggregate_windows(n, evaluate, size=120, overlap=30):
+    sums=None
+    counts=np.zeros(n,dtype=np.int32)
+    for a,b in window_ranges(n,size,overlap):
+        values=np.asarray(evaluate(a,b),dtype=np.float32)
+        if values.ndim!=2 or values.shape[0]!=b-a or not np.isfinite(values).all():
+            raise ValueError('Invalid or non-finite model output; summary withheld.')
+        if sums is None: sums=np.zeros((n,values.shape[1]),dtype=np.float32)
+        if sums.shape[1]!=values.shape[1]: raise ValueError('Inconsistent model feature shape.')
+        sums[a:b]+=values
+        counts[a:b]+=1
+    if n==0: return np.empty((0,0)),counts
+    if not np.all(counts>0): raise RuntimeError('Some source sentences were not scored.')
+    return sums/counts[:,None],counts
+
+
+# Notebook-only setup: %%writefile /content/legal_stage441/tests/test_stage44.py
+import sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
+import unittest
+from copy import deepcopy
+import tempfile
+import numpy as np
+import fitz
+from stage44_source import assemble,read_document,verify_evidence,sentence_ranges
+from stage44_brief import build_brief,audit_brief,summarize_file
+from stage44_windows import aggregate_windows,window_ranges
+
+def document(*pages):
+    lines=[([dict(text=t,x=0,y=i*20,size=12) for i,t in enumerate(page.splitlines()) if t.strip()],800) for page in pages]
+    ds=[dict(page=i+1,method='text',characters=len(p),readable=True,replacement_characters=0,ocr_error=None) for i,p in enumerate(pages)]
+    return assemble('synthetic.txt','test',lines,ds,[])
+
+def decision(doc,budget=800):
+    r=build_brief(doc,budget)
+    return ' '.join(e['sentence'] for e in r['sections']['decision']),r
+
+class EvidenceTests(unittest.TestCase):
+    def test_cross_page_sentence_and_exact_offsets(self):
+        d=document('1. We direct the insurer to pay Rs. 2,00,000 within','six weeks, subject to adjustment of payments already made.')
+        text,r=decision(d)
+        self.assertIn('six weeks',text)
+        self.assertTrue(all(verify_evidence(e,d.pages) for e in d.sentences))
+        self.assertEqual((r['sections']['decision'][0]['page'],r['sections']['decision'][0]['page_end']),(1,2))
+
+    def test_amount_tampering_fails_closed(self):
+        d=document('1. We direct payment of Rs. 20,000 within six weeks.')
+        _,r=decision(d)
+        r['sections']['decision'][0]['sentence']=r['sections']['decision'][0]['sentence'].replace('20,000','200,000')
+        self.assertEqual(audit_brief(d,r)['status'],'blocked_source_mismatch')
+
+    def test_negation_tampering_detected(self):
+        d=document('1. We clarify that this order does not decide the merits.')
+        _,r=decision(d)
+        r['sections']['decision'][0]['sentence']=r['sections']['decision'][0]['sentence'].replace('not ','')
+        self.assertFalse(audit_brief(d,r)['exact_source_check_passed'])
+
+    def test_wrong_page_detected(self):
+        d=document('1. We dismiss this appeal for the reasons above.','2. There is no order as to costs.')
+        e=deepcopy(d.sentences[0]);e['page']=2
+        self.assertFalse(verify_evidence(e,d.pages))
+
+    def test_legal_abbreviations_and_decimals(self):
+        text='M/s Acme Co. Ltd. shall deposit Rs. 20.50 at P.S. G.D. Road. The appeal is allowed.'
+        values=[text[a:b] for a,b in sentence_ranges(text)]
+        self.assertEqual(len(values),2);self.assertIn('P.S. G.D. Road.',values[0])
+
+    def test_quoted_earlier_court_not_current_order(self):
+        d=document('1. The earlier court held as follows:\n“2. We direct payment of Rs. 500 within two weeks.”\n3. We dismiss this appeal. No order as to costs.')
+        text,r=decision(d)
+        self.assertNotIn('Rs. 500',text);self.assertIn('dismiss this appeal',text)
+
+    def test_inline_historical_quote_excluded(self):
+        d=document('1. The earlier judgment said: “We allow this appeal. The order is set aside.”\n2. We dismiss the present appeal.')
+        text,_=decision(d)
+        self.assertNotIn('We allow this appeal',text);self.assertIn('We dismiss',text)
+
+    def test_referral_without_final_merits_outcome(self):
+        d=document('1. Whether the statutory provision applies is the issue before us.\n2. We direct the Registry to place this matter before a larger Bench.')
+        text,_=decision(d)
+        self.assertIn('larger Bench',text);self.assertNotIn('dismissed',text)
+
+    def test_unusual_disposition_and_all_conditions(self):
+        d=document('1. The appeals succeed.\n2. We direct the debtor to deposit Rs. 100 within eight weeks.\n3. The stay shall continue subject to that deposit.\n4. The Registry shall renew the fixed deposit every six months.')
+        text,_=decision(d)
+        for value in ['succeed','eight weeks','subject to','six months']: self.assertIn(value,text)
+
+    def test_long_modified_subject_dismissal(self):
+        d=document('1. The Arbitration Petition seeking appointment of an independent arbitrator stands dismissed.')
+        self.assertIn('stands dismissed',decision(d)[0])
+
+    def test_record_of_proceedings_not_repeated(self):
+        d=document('1. We allow this appeal.','RECORD OF PROCEEDINGS\n1. The appeal is dismissed.')
+        text,_=decision(d)
+        self.assertNotIn('dismissed',text);self.assertIn('allow',text)
+
+    def test_small_budget_never_cuts_order(self):
+        d=document('1. We direct payment within six weeks subject to '+'the original terms and conditions '*30+'.')
+        _,r=decision(d,100)
+        self.assertIn('BUDGET_OVERFLOW',audit_brief(d,r)['flags'])
+        self.assertTrue(r['sections']['decision'][0]['sentence'].endswith('.'))
+
+    def test_missing_outcome_abstains(self):
+        d=document('1. The claimant seeks payment from the company.\n2. Counsel submitted that the appeal should be allowed.')
+        text,r=decision(d)
+        self.assertFalse(text);self.assertIn('decision',audit_brief(d,r)['missing_sections'])
+
+    def test_independent_audit_catches_omitted_second_deadline(self):
+        d=document('1. We direct payment of Rs. 100 within two weeks.\n2. The debtor shall deposit Rs. 200 within four weeks.')
+        _,r=decision(d)
+        r['sections']['decision']=[e for e in r['sections']['decision'] if '200' not in e['sentence']]
+        audit=audit_brief(d,r)
+        self.assertTrue(any('200' in e['sentence'] for e in audit['possible_omitted_directions']))
+
+    def test_numeric_date_not_paragraph_number(self):
+        d=document('1. The claim was submitted on\n31.01.2007. We dismiss the appeal.')
+        self.assertIn('31.01.2007',d.paragraphs[0]['text'])
+
+    def test_inline_word_order_not_heading(self):
+        d=document('1. We set aside the impugned order granting unconditional stay.')
+        self.assertIn('impugned order granting',d.sentences[0]['sentence'])
+
+    def test_poor_page_is_flagged(self):
+        d=document('1. We dismiss this appeal.')
+        d.diagnostics.append(dict(page=2,method='native',readable=False,ocr_error='timeout',replacement_characters=0))
+        _,r=decision(d)
+        self.assertIn('EXTRACTION_REVIEW',audit_brief(d,r)['flags'])
+
+    def test_no_claim_of_legal_accuracy(self):
+        d=document('1. We allow the appeal.')
+        _,r=decision(d);a=audit_brief(d,r)
+        self.assertTrue(a['human_validation_required']);self.assertFalse(a['legal_accuracy_measured'])
+
+    def test_issue_intro_can_mention_counsel_without_being_an_argument(self):
+        d=document('1. Having heard learned counsel, the only question for consideration is whether the limitation rule applies.\n2. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertIn('only question',' '.join(e['sentence'] for e in r['sections']['issue']))
+
+    def test_current_procedural_context_beats_historical_model_label(self):
+        d=document('1. The present two sets of appeals arise from the impugned promotion order.\n2. The applicant seeks appointment as an engineer.\n3. We dismiss these appeals.')
+        r=build_brief(d,predictions={1:dict(role_code='ISSUE',role_confidence=.99,importance_score=.99)})
+        issue=' '.join(e['sentence'] for e in r['sections']['issue'])
+        self.assertIn('present two sets',issue);self.assertNotIn('appointment as an engineer',issue)
+
+    def test_batch_failure_not_reported_as_success(self):
+        from stage44_cli import run_batch
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);p=folder/'valid.txt'
+            p.write_text('1. The only issue is whether the provision applies.\n2. We allow this appeal.',encoding='utf8')
+            report,archive=run_batch([p,folder/'missing.pdf'],folder/'out',ocr='off')
+            self.assertEqual((report['processed'],report['failed']),(1,1))
+            self.assertEqual(report['machine_source_checks_passed'],0)
+            self.assertTrue(Path(archive).exists())
+
+    def test_ancillary_permission_not_mistaken_for_final_outcome(self):
+        d=document('1. Interlocutory Application No. 3 is allowed granting permission to produce additional documents.\n2. The court has heard the arguments on the main appeal.')
+        self.assertFalse(decision(d)[0])
+
+    def test_reported_appellate_ruling_is_not_current_order(self):
+        d=document('1. The first appellate court went further to find that the suit has to be dismissed.\n2. We allow the present appeal and set aside that judgment.')
+        text,_=decision(d)
+        self.assertIn('We allow',text);self.assertNotIn('has to be dismissed',text)
+
+    def test_superscript_marker_does_not_change_section_number(self):
+        # Synthetic geometry avoids relying on case-specific names or numbers.
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'footnote.pdf'
+            pdf=fitz.open();page=pdf.new_page()
+            page.insert_text((72,80),'1. The issue concerns Section 125',fontsize=14)
+            end=72+fitz.get_text_length('1. The issue concerns Section 125',fontsize=14)
+            page.insert_text((end,75),'6',fontsize=8)
+            page.insert_text((end+5,80),' of the Act.',fontsize=14)
+            page.insert_text((72,110),'2. We dismiss this appeal.',fontsize=14)
+            pdf.save(p);pdf.close()
+            d=read_document(p,ocr='off')
+            self.assertNotIn('1256',' '.join(s['sentence'] for s in d.sentences))
+            self.assertTrue(all(verify_evidence(e,d.pages) for e in d.sentences))
+
+    def test_blank_pdf_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'blank.pdf';pdf=fitz.open();pdf.new_page();pdf.save(p);pdf.close()
+            with self.assertRaises(ValueError):read_document(p,ocr='off')
+
+class WindowTests(unittest.TestCase):
+    def test_long_document_covers_every_sentence(self):
+        for n in [1,119,120,121,240,537,2001]:
+            values,counts=aggregate_windows(n,lambda a,b:np.arange(a,b)[:,None])
+            np.testing.assert_allclose(values[:,0],np.arange(n))
+            self.assertTrue((counts>0).all());self.assertLessEqual(max(b-a for a,b in window_ranges(n)),120)
+
+    def test_missing_or_nonfinite_model_values_fail(self):
+        with self.assertRaises(ValueError):aggregate_windows(10,lambda a,b:np.zeros((b-a-1,2)))
+        with self.assertRaises(ValueError):aggregate_windows(10,lambda a,b:np.full((b-a,2),np.nan))
+
+    def test_overlap_averages_instead_of_duplicate_evidence(self):
+        values,counts=aggregate_windows(150,lambda a,b:np.ones((b-a,1))*a)
+        self.assertEqual(counts[100],2);self.assertEqual(values[100,0],45)
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    def test_cr_pc_variants_preserve_sentence_and_source(self):
+        for abbreviation in ['Cr. PC', 'Cr. P.C.', 'Cr.P.C.']:
+            d=document(f'1. We invoke Section 482, {abbreviation} and quash the FIR. The appeal stands allowed.')
+            self.assertEqual(len(d.sentences),2)
+            self.assertIn('quash the FIR',d.sentences[0]['sentence'])
+            self.assertTrue(all(verify_evidence(s,d.pages) for s in d.sentences))
+
+    def test_letter_with_first_person_is_not_court_reasoning(self):
+        d=document('1. The following letter was written by the company: “Dear Sirs, the currency depreciation has added to our woes. We cannot continue at this price. Yours faithfully, the manager.”\n2. We find that the contractual obligation remains binding. No evidence of fraud has been produced.\n3. We dismiss this appeal.')
+        r=build_brief(d,predictions={s['id']:dict(role_code='ANALYSIS',role_confidence=.99,importance_score=.99) for s in d.sentences})
+        reasons=' '.join(s['sentence'] for s in r['sections']['reasoning'])
+        self.assertIn('contractual obligation',reasons)
+        self.assertNotIn('our woes',reasons);self.assertNotIn('at this price',reasons)
+
+    def test_party_paragraph_cannot_be_promoted_by_model_score(self):
+        d=document('1. Counsel submitted that the agreement was void. Therefore, the award could not be enforced. The claim was barred by limitation.\n2. In our view, those objections have no evidentiary basis. The agreement was performed voluntarily.\n3. We dismiss this appeal.')
+        r=build_brief(d,predictions={s['id']:dict(role_code='RATIO',role_confidence=1,importance_score=1) for s in d.sentences})
+        reasons=' '.join(s['sentence'] for s in r['sections']['reasoning'])
+        self.assertNotIn('barred by limitation',reasons)
+        self.assertIn('performed voluntarily',reasons)
+
+    def test_short_quoted_we_does_not_establish_court_voice(self):
+        d=document('1. The complaint relies on the phrase “we are not denying our obligation” in the letter.\n2. We find the complaint unsupported by the records.\n3. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertFalse(any('phrase' in s['sentence'] for s in r['sections']['reasoning']))
+
+    def test_reasoning_keeps_consecutive_context_beyond_five_sentences(self):
+        d=document('1. The issue before us is whether the agreement is binding.\n2. We find that the agreement remains binding. The parties signed it voluntarily. The price was settled in advance. Both sides performed the first delivery. There is no evidence of deception. The subsequent price change does not invalidate consent. Therefore the objection has no factual basis.\n3. We dismiss this appeal.')
+        r=build_brief(d)
+        reasons=r['sections']['reasoning']
+        self.assertEqual(len(reasons),7)
+        self.assertEqual(len({s['reasoning_block_id'] for s in reasons}),1)
+        self.assertEqual([s['id'] for s in reasons],list(range(reasons[0]['id'],reasons[-1]['id']+1)))
+
+    def test_hearing_and_counsel_list_not_reasoning(self):
+        d=document('1. We have heard Mr. Smith for the appellant and Ms. Jones for the respondent. We have carefully considered the submissions and perused the records.\n2. We find that the claim is barred by limitation.\n3. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertFalse(any('heard' in s['sentence'] or 'perused' in s['sentence'] for s in r['sections']['reasoning']))
+
+    def test_referral_analysis_is_separate_from_direction(self):
+        d=document('1. The question before us is whether the statutory exception applies.\n2. We are of the opinion that the existing interpretation is inconsistent. We cannot agree with the earlier view. The provision overrides the general rule for compensation arising from injury. We direct the Registry to place the matter before a larger Bench.')
+        text,r=decision(d)
+        self.assertIn('larger Bench',text);self.assertNotIn('inconsistent',text)
+        self.assertIn('inconsistent',' '.join(s['sentence'] for s in r['sections']['reasoning']))
+
+    def test_split_prefix_never_removes_quashing_or_condition(self):
+        d=document('1. We are of the opinion that the High Court erred. The High Court having failed to exercise its power, we invoke it and quash the FIR on which no further proceedings will be taken. The appeal stands allowed.')
+        text,_=decision(d)
+        self.assertIn('quash the FIR',text);self.assertIn('no further proceedings',text)
+
+    def test_competing_positions_dont_mix_in_court_conclusion(self):
+        d=document('1. The petitioner seeks appointment of an arbitrator. The respondent contends that the claim is barred by limitation.\n2. Even if limitation is computed from that date, the claim stands barred when the notice was issued seeking appointment of an arbitrator.\n3. The petition stands dismissed.')
+        r=build_brief(d)
+        self.assertEqual(r['issue_mode'],'reported_competing_positions')
+        issue=' '.join(s['sentence'] for s in r['sections']['issue'])
+        self.assertIn('respondent contends',issue);self.assertNotIn('Even if',issue)
+
+    def test_legal_dispute_description_beats_filing_history(self):
+        d=document('1. The present appeal arises from an order dated 01.01.2020.\n2. The policy was challenged on the ground that the claimant had been placed below another employee in seniority, and from that point the present lis has arisen.\n3. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertEqual(r['issue_mode'],'source_dispute_description')
+        self.assertIn('seniority',r['sections']['issue'][0]['sentence'])
+
+    def test_reported_deadline_retained_in_audit_without_current_warning(self):
+        d=document('1. Counsel submitted that the debtor shall deposit money within four weeks.\n2. We dismiss the present appeal.')
+        r=build_brief(d);a=audit_brief(d,r)
+        self.assertFalse(a['possible_omitted_directions'])
+        self.assertEqual(len(a['reported_or_historical_direction_mentions']),1)
+
+    def test_roman_list_marker_is_never_an_isolated_sentence(self):
+        text='The following objections were raised: i. Supply was impossible. ii. There was no loss. The appeal stands dismissed.'
+        values=[text[a:b] for a,b in sentence_ranges(text)]
+        self.assertIn('ii. There was no loss.',values)
+        self.assertNotIn('ii.',values)
+
+    def test_elapsed_time_in_history_is_not_a_deadline(self):
+        d=document('1. Disputes arose within twelve days from the signing of the agreement.\n2. We dismiss this appeal.')
+        r=build_brief(d);a=audit_brief(d,r)
+        self.assertFalse(a['possible_omitted_directions'])
+        self.assertEqual(len(a['reported_or_historical_direction_mentions']),1)
+
+    def test_heading_fragment_not_selected_as_reason(self):
+        d=document('1. We find that the objection lacks evidence. LEGAL FRAMEWORK TO DETERMINE LIABILITY\n2. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertNotIn('LEGAL FRAMEWORK',' '.join(s['sentence'] for s in r['sections']['reasoning']))
+
+    def test_unaccompanied_quote_introduction_not_selected_as_reason(self):
+        d=document('1. Here, we would like to reproduce the earlier order, which is as follows:\n“2. The claimant shall pay the costs.”\n3. We find the current claim unsupported by evidence.\n4. We dismiss this appeal.')
+        r=build_brief(d)
+        self.assertNotIn('reproduce',' '.join(s['sentence'] for s in r['sections']['reasoning']))
+
+    def test_explicit_question_without_whether(self):
+        d=document('1. This brings us to the next question, from which date will maintenance be payable?\n2. In our view it must run from the application date.\n3. We allow this appeal.')
+        r=build_brief(d)
+        self.assertEqual(r['issue_mode'],'explicit_source_issue')
+        self.assertIn('from which date',r['sections']['issue'][0]['sentence'])
+
+if __name__=='__main__':unittest.main()
+
+
+subprocess.check_call([PY, '-m', 'unittest', 'discover', '-s', str(WORK / 'tests'), '-v'])
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+DRIVE = Path('/content/drive/MyDrive')
+ENCODER_OVERRIDE = '' # Example: /content/drive/MyDrive/.../context256/best_checkpoint
+BUNDLE_OVERRIDE = '' # Example: /content/drive/MyDrive/Colab Notebooks/Stage3 Assets/stage4_english_model_bundle.zip
+EVIDENCE_ONLY = False # Set True only to explicitly skip trained inference.
+encoder_candidates = [
+    DRIVE/'legal_summarizer_stage2_2_artifacts/context256/best_checkpoint',
+    DRIVE/'Colab Notebooks/Stage3 Assets/best_checkpoint',
+]
+for base in (Path('/content/drive'), DRIVE):
+    for shortcut_name in ('.shortcut-targets-by-id', '.shortcut-targets-byid'):
+        shared = base/shortcut_name/'1_scAoDepjECZBTPYSWTe-xntTU68HYXj'
+        encoder_candidates += [shared/'legal_summarizer_stage2_2_artifacts/context256/best_checkpoint',
+                               shared/'context256/best_checkpoint']
+bundle_candidates = [DRIVE/'Colab Notebooks/Stage3 Assets/stage4_english_model_bundle.zip',
+                     DRIVE/'stage4_english_model_bundle.zip']
+ENCODER = Path(ENCODER_OVERRIDE) if ENCODER_OVERRIDE else next((p for p in encoder_candidates if (p/'model.safetensors').is_file()), None)
+BUNDLE = Path(BUNDLE_OVERRIDE) if BUNDLE_OVERRIDE else next((p for p in bundle_candidates if p.is_file()), None)
+if not EVIDENCE_ONLY and (ENCODER is None or BUNDLE is None):
+    raise FileNotFoundError('Set ENCODER_OVERRIDE and BUNDLE_OVERRIDE to the matching Drive paths above, then rerun this cell.')
+RUN_ENV = dict(os.environ, PYTHONPATH=str(WORK/'src'), HF_HUB_OFFLINE='1', TOKENIZERS_PARALLELISM='false')
+if not EVIDENCE_ONLY:
+    RUN_ENV.update(LEGAL_ENCODER_DIR=str(ENCODER), LEGAL_MODEL_BUNDLE=str(BUNDLE))
+    subprocess.check_call([PY, '-c', 'from stage44_model import FullDocumentRanker; import os; m=FullDocumentRanker(os.environ["LEGAL_ENCODER_DIR"], os.environ["LEGAL_MODEL_BUNDLE"]); print("Verified model loaded on", m.device)'], env=RUN_ENV)
+
+
+INPUT_FOLDER = ''
+BUDGET = 800
+OCR_MODE = 'auto' # auto, off, force
+if INPUT_FOLDER:
+    inputs = sorted(str(p) for p in Path(INPUT_FOLDER).iterdir() if p.suffix.lower() in {'.pdf','.txt'})
+else:
+    from google.colab import files
+    uploaded = files.upload()
+    inputs=[]
+    for name, data in uploaded.items():
+        destination=WORK/'inputs'/Path(name).name
+        if destination.suffix.lower() not in {'.pdf','.txt'}:
+            print('Skipped unsupported file:',name); continue
+        destination.write_bytes(data);inputs.append(str(destination))
+if not inputs: raise ValueError('Select at least one PDF/TXT judgment.')
+print('Documents selected:',len(inputs))
+
+
+run_id=datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+OUT=WORK/'outputs'/('run_'+run_id)
+command=[PY,str(WORK/'src/stage44_cli.py'),*inputs,'--output',str(OUT),'--budget',str(BUDGET),'--ocr',OCR_MODE]
+if EVIDENCE_ONLY: command.append('--evidence-only')
+else: command += ['--encoder',str(ENCODER),'--bundle',str(BUNDLE)]
+completed=subprocess.run(command,env=RUN_ENV)
+report=json.loads((OUT/'batch_report.json').read_text()) if (OUT/'batch_report.json').exists() else None
+if report is None: raise RuntimeError('Inference stopped before producing a report; inspect the error above.')
+print(json.dumps({k:v for k,v in report.items() if k!='documents'},indent=2))
+if completed.returncode:
+    print('Some inputs failed. The batch report identifies them; do not count failed files as successful summaries.')
+
+
+from IPython.display import Markdown, display
+for record in report['documents']:
+    if record['processed']:
+        display(Markdown((OUT/record['result_folder']/'summary.md').read_text()))
+SAVE_TO_DRIVE = True
+archive=OUT.with_suffix('.zip')
+if SAVE_TO_DRIVE:
+    saved=DRIVE/'legal_summarizer_stage4_4_1_results'
+    saved.mkdir(exist_ok=True)
+    shutil.copy2(archive,saved/archive.name)
+    print('Saved results:',saved/archive.name)
+from google.colab import files
+files.download(str(archive))
+
+
+LAUNCH_UI = True
+if LAUNCH_UI:
+    subprocess.check_call([PY,'-m','pip','install','-q','-r',str(WORK/'requirements-ui.txt')])
+    subprocess.check_call([PY,'-m','pip','check'])
+    ui_log=open(WORK/'ui.log','w')
+    ui_process=subprocess.Popen([PY,str(WORK/'src/stage44_app.py')],env=RUN_ENV,stdout=ui_log,stderr=subprocess.STDOUT)
+    import socket,time
+    for _ in range(60):
+        if ui_process.poll() is not None:
+            raise RuntimeError((WORK/'ui.log').read_text())
+        try:
+            with socket.create_connection(('127.0.0.1',7860),timeout=1): break
+        except OSError: time.sleep(1)
+    else: raise TimeoutError('UI did not start. Inspect /content/legal_stage441/ui.log')
+    from google.colab import output
+    output.serve_kernel_port_as_iframe(7860,height=850)

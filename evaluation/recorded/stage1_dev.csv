@@ -1,0 +1,6 @@
+model,accuracy,macro_f1,weighted_f1,split,provenance
+majority,0.341785,0.039188,0.174122,dev,Saved Stage 1 Colab cell 11; rounded to six decimals; not rerun
+knn,0.25495,0.184049,0.214147,dev,Saved Stage 1 Colab cell 11; rounded to six decimals; not rerun
+logreg,0.466134,0.392117,0.480561,dev,Saved Stage 1 Colab cell 11; rounded to six decimals; not rerun
+svm,0.479333,0.384932,0.49397,dev,Saved Stage 1 Colab cell 11; rounded to six decimals; not rerun
+word_bilstm,0.500521,0.413521,0.508193,dev,Saved Stage 1 Colab cell 11; rounded to six decimals; not rerun

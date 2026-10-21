@@ -1,0 +1,449 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Colab: run this installation cell once, then continue in order.
+# Notebook-only setup: %pip install -q "torch>=2.5,<3" "scikit-learn>=1.4,<2" "pandas>=2,<3" "huggingface-hub>=0.25,<2" "transformers>=4.45,<5" "pyarrow>=15,<25"
+
+
+import os, json, random, hashlib, platform, importlib.metadata
+from pathlib import Path
+from collections import Counter
+import numpy as np
+import pandas as pd
+import torch
+from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.dummy import DummyClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+import pyarrow.parquet as pq
+from IPython.display import display
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+OUTPUT = Path('artifacts/stage1')
+OUTPUT.mkdir(parents=True, exist_ok=True)
+CONFIG = dict(seed=SEED, max_words=50, vocab_size=10000, embed_dim=100,
+              hidden_dim=128, batch_size=64, epochs=15, patience=3, lr=1e-3)
+versions = {p: importlib.metadata.version(p) for p in
+            ['torch', 'scikit-learn', 'pandas', 'numpy', 'transformers', 'huggingface-hub', 'pyarrow']}
+(OUTPUT / 'environment.json').write_text(json.dumps(dict(python=platform.python_version(), packages=versions), indent=2))
+print('Device:', DEVICE)
+
+
+# Dataset access: check HF_TOKEN or use locally uploaded official JSON files.
+# Invalid or missing credentials never cause cascading IPython/SystemExit tracebacks.
+from huggingface_hub import hf_hub_download, HfApi
+
+REPO = 'opennyaiorg/InRhetoricalRoles'
+DATASET_URL = f'https://huggingface.co/datasets/{REPO}'
+DATA_DIR = Path('/content') if Path('/content').exists() else Path.cwd()
+SPLITS = ('train', 'dev', 'test')
+raw, split_files = {}, {}
+DATASET_READY = False
+DATASET_STATUS = 'Not loaded'
+
+class DatasetSetupNeeded(Exception):
+    """Missing authentication or access permission; display without traceback."""
+
+def _load_splits():
+    paths = {split: DATA_DIR / f'{split}.json' for split in SPLITS}
+    if all(path.is_file() for path in paths.values()):
+        loaded = {}
+        print(f'Loading locally provided JSON dataset from {DATA_DIR}')
+        for split, file in paths.items():
+            with file.open(encoding='utf-8') as handle:
+                loaded[split] = json.load(handle)
+            if not isinstance(loaded[split], list):
+                raise ValueError(f'{file.name}: expected a list of annotated documents')
+            print(f'{split}: {len(loaded[split])} documents')
+        return loaded, {split: [str(path)] for split, path in paths.items()}, 'local JSON'
+
+    token = None
+    secret_problem = None
+    try:
+        from google.colab import userdata
+        token = userdata.get('HF_TOKEN')
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except Exception as exc:
+        secret_problem = type(exc).__name__
+    token = (token or os.environ.get('HF_TOKEN') or '').strip()
+
+    if not token:
+        missing = ', '.join(p.name for p in paths.values() if not p.exists())
+        detail = f'Colab secret issue: {secret_problem}.\n' if secret_problem else ''
+        raise DatasetSetupNeeded(
+            'HF_TOKEN is missing.\n' + detail +
+            'Create a Hugging Face Read token at https://huggingface.co/settings/tokens.\n'
+            'Add/update HF_TOKEN in Colab > Secrets (key icon) and enable notebook access.\n'
+            f'Accept access to {DATASET_URL} with that account.\n'
+            f'Or upload all three official JSON files to {DATA_DIR}: train.json, dev.json, test.json. '
+            f'(Currently missing: {missing})'
+        )
+    if not token.startswith('hf_'):
+        raise DatasetSetupNeeded(
+            'HF_TOKEN does not look like a Hugging Face access token (normally starts with hf_).\n'
+            'Copy ONLY the token value, without quotes, from https://huggingface.co/settings/tokens.\n'
+            'Replace HF_TOKEN in Colab Secrets, enable notebook access, and rerun.'
+        )
+
+    api = HfApi(token=token)
+    try:
+        account = api.whoami(token=token).get('name', '(unknown)')
+        print('Hugging Face authentication successful. Account:', account)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        raise DatasetSetupNeeded(
+            f'Hugging Face rejected HF_TOKEN (HTTP {status or "authentication failure"}).\n'
+            'This is not a bug in the ML model. The token stored in Colab Secrets '
+            'is invalid, revoked, expired, or copied incorrectly.\n'
+            '1. Create a NEW Read token at https://huggingface.co/settings/tokens.\n'
+            '2. In Colab > Secrets, replace HF_TOKEN with that token and enable notebook access.\n'
+            '3. Restart the runtime and use Runtime > Run all.\n'
+            'Do not paste your token into a notebook cell or share it.'
+        ) from None
+
+    try:
+        revision = api.dataset_info(repo_id=REPO, token=token).sha
+        names = api.list_repo_files(repo_id=REPO, repo_type='dataset',
+                                    revision=revision, token=token)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        if status in (401, 403):
+            raise DatasetSetupNeeded(
+                f'Token works, but access to {DATASET_URL} was denied (HTTP {status}).\n'
+                f'Sign in as {account}, request/accept access to the dataset, '
+                'then rerun the notebook. A fine-grained token also needs access to this repo.'
+            ) from None
+        raise RuntimeError(f'Unable to list dataset files: {type(exc).__name__}') from exc
+
+    files = {split: sorted(f for f in names if f.startswith(f'data/{split}-')
+                           and f.endswith('.parquet')) for split in SPLITS}
+    if not all(files.values()):
+        raise ValueError('Dataset structure changed: expected data/train-, data/dev- '
+                         'and data/test- Parquet shards. Available files: ' + str(names))
+
+    loaded = {}
+    for split, filenames in files.items():
+        records = []
+        for filename in filenames:
+            try:
+                file_path = hf_hub_download(repo_id=REPO, filename=filename,
+                                            repo_type='dataset', revision=revision, token=token)
+            except Exception as exc:
+                status = getattr(getattr(exc, 'response', None), 'status_code', None)
+                if status in (401, 403) or 'GatedRepoError' in type(exc).__name__:
+                    raise DatasetSetupNeeded(
+                        f'Token authenticated as {account}, but download access is denied '
+                        f'(HTTP {status or "401/403"}) for {filename}.\n'
+                        f'Visit {DATASET_URL} with the same account and accept/request access.\n'
+                        'If using a fine-grained token, enable read access to this gated dataset.'
+                    ) from None
+                raise RuntimeError(f'Failed to download {filename}: {type(exc).__name__}') from exc
+            records.extend(pq.read_table(file_path).to_pylist())
+        loaded[split] = records
+        print(f'{split}: {len(records)} documents from {len(filenames)} file(s)')
+    return loaded, files, revision
+
+try:
+    raw, split_files, revision = _load_splits()
+except DatasetSetupNeeded as exc:
+    DATASET_STATUS = str(exc)
+    print('DATASET SETUP NEEDED — training was skipped safely.\n')
+    print(DATASET_STATUS)
+else:
+    DATASET_READY = True
+    DATASET_STATUS = 'Loaded successfully'
+    (OUTPUT / 'dataset.json').write_text(json.dumps(
+        dict(repo=REPO, revision=revision, files=split_files), indent=2))
+    print('Dataset loaded successfully! Continue to the next cells.')
+
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    LABELS = ['ANALYSIS', 'ARG_PETITIONER', 'ARG_RESPONDENT', 'FAC', 'ISSUE', 'NONE',
+              'PREAMBLE', 'PRE_NOT_RELIED', 'PRE_RELIED', 'RATIO', 'RLC', 'RPC', 'STA']
+    LABEL2ID = {label: i for i, label in enumerate(LABELS)}
+    ID2LABEL = {i: label for label, i in LABEL2ID.items()}
+
+    def json_to_df(documents, split):
+        rows, skipped, multiple_sets = [], [], []
+        for doc_index, doc in enumerate(documents):
+            annotations = doc.get('annotations') or []
+            # A document may contain labels from several annotators. Never merge their
+            # results: this would duplicate offsets and may invent contradictory labels.
+            candidates = []
+            for annotation_index, annotation in enumerate(annotations):
+                if not isinstance(annotation, dict):
+                    continue
+                results = annotation.get('result') or []
+                spans_here = [r['value'] for r in results if isinstance(r, dict)
+                              and isinstance(r.get('value'), dict)
+                              and 'text' in r['value']]
+                if spans_here:
+                    candidates.append((annotation_index, spans_here, annotation))
+
+            if not candidates:
+                skipped.append(doc_index)
+                continue
+
+            # Prefer an explicitly adjudicated/ground-truth annotation, if supplied.
+            # The Hugging Face Parquet schema often contains only 'result' and lacks
+            # adjudication metadata; in that case, use a documented deterministic policy.
+            adjudicated = [item for item in candidates if
+                           item[2].get('ground_truth') is True or
+                           item[2].get('is_adjudicated') is True]
+            if len(adjudicated) > 1:
+                raise ValueError(f'{split} document {doc_index}: more than one annotation '
+                                 'is marked adjudicated; review the source data.')
+            selected_idx, spans, _ = (adjudicated[0] if adjudicated else candidates[0])
+            selection_reason = 'adjudicated' if adjudicated else 'first_nonempty'
+
+            if len(annotations) > 1:
+                # Compare the entire labeled sentence sequence across nonempty sets.
+                # Keep only counts/indices in audit, never duplicate the document text.
+                def signature(annotator_spans):
+                    records = [(v.get('start'), v.get('end'), v.get('text'),
+                                tuple(v.get('labels') or ())) for v in annotator_spans]
+                    return tuple(sorted(records, key=lambda x: (str(x[0]), str(x[1]), str(x[2]))))
+                disagree = len({signature(item[1]) for item in candidates}) > 1
+                multiple_sets.append(dict(doc_index=doc_index,
+                                          total_annotation_sets=len(annotations),
+                                          nonempty_annotation_sets=len(candidates),
+                                          selected_annotation_index=selected_idx,
+                                          selection_reason=selection_reason,
+                                          annotation_sets_disagree=disagree))
+            for value in spans:
+                if not isinstance(value.get('start'), int) or not isinstance(value.get('end'), int):
+                    raise ValueError(f'{split} document {doc_index}: missing sentence offsets')
+                if value['end'] <= value['start'] or not value['text'].strip():
+                    raise ValueError(f'{split} document {doc_index}: invalid or empty span')
+                labels = value.get('labels') or []
+                if len(labels) > 1:
+                    raise ValueError('Expected one rhetorical role per sentence')
+                label = labels[0] if labels else None
+                if label is not None and label not in LABEL2ID:
+                    raise ValueError(f'Unknown label: {label}')
+                rows.append(dict(split=split, doc_index=doc_index, annotation_index=selected_idx, meta=doc.get('meta'),
+                                 start=value['start'], end=value['end'], text=value['text'], label=label))
+        df = pd.DataFrame(rows, columns=['split','doc_index','annotation_index','meta','start','end','text','label'])
+        df = df.sort_values(['doc_index', 'start', 'end']).reset_index(drop=True)
+        if df.duplicated(['doc_index', 'start', 'end']).any():
+            raise ValueError(f'{split}: duplicate sentence spans')
+        df['sentence_index'] = df.groupby('doc_index').cumcount()
+        report = dict(raw_documents=len(documents), represented_documents=int(df.doc_index.nunique()),
+                      sentences=len(df), skipped_document_indices=skipped,
+                      unlabeled=int(df.label.isna().sum()),
+                      multi_annotation_documents=len(multiple_sets),
+                      multi_annotation_disagreements=sum(x['annotation_sets_disagree'] for x in multiple_sets),
+                      annotation_selection_policy='adjudicated_if_marked_else_first_nonempty',
+                      multi_annotation_details=multiple_sets)
+        return df, report
+
+    frames, audit = {}, {}
+    for split in raw:
+        frames[split], audit[split] = json_to_df(raw[split], split)
+    for split in ['train', 'dev']:
+        if frames[split].empty or frames[split].label.isna().any():
+            raise ValueError(f'{split}: requires nonempty fully labeled data')
+
+    def document_hashes(df):
+        return {hashlib.sha256(' '.join(' '.join(g.text).split()).encode()).hexdigest()
+                for _, g in df.groupby('doc_index')}
+
+    for a, b in [('train','dev'), ('train','test'), ('dev','test')]:
+        overlap = document_hashes(frames[a]) & document_hashes(frames[b])
+        audit[f'{a}_{b}_duplicate_documents'] = len(overlap)
+        if overlap:
+            raise ValueError(f'{a}/{b}: {len(overlap)} identical documents; resolve split leakage first')
+        audit[f'{a}_{b}_shared_sentence_texts'] = len(set(frames[a].text) & set(frames[b].text))
+    (OUTPUT / 'data_audit.json').write_text(json.dumps(audit, indent=2))
+    # Full document-level provenance, including all multi-annotator choices, is in this JSON.
+    print('Full data audit:', OUTPUT / 'data_audit.json')
+    for split in ['train', 'dev', 'test']:
+        info = audit[split]
+        print(f'{split}: {info["sentences"]} sentences; '
+              f'{info["multi_annotation_documents"]} documents with multiple annotation sets '
+              f'({info["multi_annotation_disagreements"]} with different annotations); '
+              f'{info["unlabeled"]} unlabeled sentences')
+    if any(audit[s]['multi_annotation_disagreements'] for s in ['train','dev','test']):
+        print('NOTICE: Some annotation sets disagree. In absence of an adjudication marker, '
+              'the first nonempty set was selected. Results reflect that policy, not verified adjudicated gold labels.')
+    train_df, dev_df, test_df = (frames[s] for s in ['train','dev','test'])
+    print(train_df.label.value_counts())
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained('nlpaueb/legal-bert-base-uncased')
+    lengths = train_df.text.map(lambda text: len(tokenizer.encode(text, add_special_tokens=True, truncation=False)))
+    word_lengths = train_df.text.str.split().str.len()
+    doc_lengths = train_df.groupby('doc_index').size()
+    print('Training token-length percentiles:', lengths.quantile([.5, .95, .99]).to_dict())
+    print('Sentences exceeding 128 transformer tokens:', int((lengths > 128).sum()))
+    print('Sentences exceeding 50 whitespace words:', int((word_lengths > CONFIG['max_words']).sum()))
+    print('Documents exceeding 256 sentences:', int((doc_lengths > 256).sum()))
+    print('Sentences a naive document cut would discard:', int((doc_lengths - 256).clip(lower=0).sum()))
+    # Stage 1 below classifies EVERY sentence. It never cuts documents to 256 sentences.
+    # Future document-context models must use windows and restore one prediction per original sentence.
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    scores = []
+    def evaluate(name, truth, prediction, split='dev'):
+        row = dict(model=name, split=split, accuracy=accuracy_score(truth, prediction),
+                   macro_f1=f1_score(truth, prediction, labels=LABELS, average='macro', zero_division=0),
+                   weighted_f1=f1_score(truth, prediction, labels=LABELS, average='weighted', zero_division=0))
+        report = classification_report(truth, prediction, labels=LABELS, output_dict=True, zero_division=0)
+        (OUTPUT / f'{name}_{split}_report.json').write_text(json.dumps(report, indent=2))
+        pd.DataFrame(confusion_matrix(truth, prediction, labels=LABELS), index=LABELS, columns=LABELS).to_csv(OUTPUT / f'{name}_{split}_confusion.csv')
+        scores.append(row)
+        pd.DataFrame(scores).to_csv(OUTPUT / 'metrics.csv', index=False)
+        return row
+
+    vectorizer = TfidfVectorizer(max_features=5000)
+    X_train = vectorizer.fit_transform(train_df.text)
+    X_dev = vectorizer.transform(dev_df.text)
+    classical = {
+        'majority': DummyClassifier(strategy='most_frequent'),
+        'knn': KNeighborsClassifier(n_neighbors=5),
+        'logreg': LogisticRegression(max_iter=1000, class_weight='balanced', random_state=SEED),
+        'svm': LinearSVC(class_weight='balanced', max_iter=5000, random_state=SEED),
+    }
+    for name, estimator in classical.items():
+        estimator.fit(X_train, train_df.label)
+        prediction = estimator.predict(X_dev)
+        evaluate(name, dev_df.label, prediction)
+        dev_df.assign(prediction=prediction).to_csv(OUTPUT / f'{name}_dev_predictions.csv', index=False)
+    display(pd.DataFrame(scores))
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    counts = Counter(word for text in train_df.text for word in text.lower().split())
+    vocab = ['<PAD>', '<UNK>'] + [word for word, _ in counts.most_common(max(0, CONFIG['vocab_size'] - 2))]
+    word2idx = {word: i for i, word in enumerate(vocab)}
+
+    def encode_sentence(text):
+        ids = [word2idx.get(word, 1) for word in text.lower().split()[:CONFIG['max_words']]] or [1]
+        length = len(ids)
+        return ids + [0] * (CONFIG['max_words'] - length), length
+
+    def make_dataset(df):
+        encoded = [encode_sentence(text) for text in df.text]
+        return TensorDataset(torch.tensor([x[0] for x in encoded], dtype=torch.long),
+                             torch.tensor([x[1] for x in encoded], dtype=torch.long),
+                             torch.tensor([LABEL2ID[label] for label in df.label], dtype=torch.long))
+
+    generator = torch.Generator().manual_seed(SEED)
+    train_loader = DataLoader(make_dataset(train_df), batch_size=CONFIG['batch_size'], shuffle=True, generator=generator)
+    dev_loader = DataLoader(make_dataset(dev_df), batch_size=CONFIG['batch_size'], shuffle=False)
+
+    class SimpleBiLSTM(nn.Module):
+        def __init__(self, vocab_size, embed_dim, hidden_dim, num_labels):
+            super().__init__()
+            self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+            self.bilstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True, bidirectional=True)
+            self.dropout = nn.Dropout(0.3)
+            self.classifier = nn.Linear(2 * hidden_dim, num_labels)
+
+        def forward(self, x, lengths):
+            packed = pack_padded_sequence(self.embedding(x), lengths.cpu(), batch_first=True, enforce_sorted=False)
+            _, (hidden, _) = self.bilstm(packed)
+            return self.classifier(self.dropout(torch.cat([hidden[-2], hidden[-1]], dim=1)))
+
+    model = SimpleBiLSTM(len(vocab), CONFIG['embed_dim'], CONFIG['hidden_dim'], len(LABELS)).to(DEVICE)
+    label_counts = train_df.label.value_counts().reindex(LABELS, fill_value=0)
+    if (label_counts == 0).any():
+        print('Note: labels absent from training:', label_counts[label_counts == 0].index.tolist())
+    # Classes absent from training contribute no loss. Do not divide by zero.
+    class_weights = np.zeros(len(LABELS), dtype=np.float32)
+    present = label_counts.to_numpy() > 0
+    class_weights[present] = len(train_df) / (present.sum() * label_counts.to_numpy()[present])
+    weights = torch.tensor(class_weights, dtype=torch.float32, device=DEVICE)
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG['lr'])
+    (OUTPUT / 'config.json').write_text(json.dumps(CONFIG, indent=2))
+    (OUTPUT / 'vocabulary.json').write_text(json.dumps(word2idx))
+    (OUTPUT / 'labels.json').write_text(json.dumps(LABEL2ID, indent=2))
+
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    @torch.no_grad()
+    def predict_loader(model, loader):
+        model.eval()
+        truth, predictions = [], []
+        for ids, lengths, labels in loader:
+            logits = model(ids.to(DEVICE), lengths)
+            predictions.extend(logits.argmax(1).cpu().tolist())
+            truth.extend(labels.tolist())
+        return [ID2LABEL[i] for i in truth], [ID2LABEL[i] for i in predictions]
+
+    history, best, stale = [], -1.0, 0
+    checkpoint = OUTPUT / 'bilstm_best.pt'
+    for epoch in range(1, CONFIG['epochs'] + 1):
+        model.train()
+        loss_sum = 0.0
+        for ids, lengths, labels in train_loader:
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(ids.to(DEVICE), lengths)
+            loss = criterion(logits, labels.to(DEVICE))
+            if not torch.isfinite(loss):
+                raise RuntimeError('Nonfinite loss; stop and inspect inputs and gradients')
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            loss_sum += loss.item()
+        truth, predictions = predict_loader(model, dev_loader)
+        macro = f1_score(truth, predictions, labels=LABELS, average='macro', zero_division=0)
+        history.append(dict(epoch=epoch, mean_batch_loss=loss_sum/len(train_loader), dev_macro_f1=macro))
+        print(history[-1])
+        if macro > best:
+            best, stale = macro, 0
+            torch.save(model.state_dict(), checkpoint)
+        else:
+            stale += 1
+        if stale >= CONFIG['patience']:
+            break
+    pd.DataFrame(history).to_csv(OUTPUT / 'training_history.csv', index=False)
+    model.load_state_dict(torch.load(checkpoint, map_location=DEVICE, weights_only=True))
+    truth, predictions = predict_loader(model, dev_loader)
+    evaluate('bilstm', truth, predictions)
+    dev_df.assign(prediction=predictions).to_csv(OUTPUT / 'bilstm_dev_predictions.csv', index=False)
+    display(pd.DataFrame(scores).sort_values('macro_f1', ascending=False))
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    RUN_FINAL_TEST = False
+    if RUN_FINAL_TEST:
+        if test_df.empty or test_df.label.isna().any() or audit['test']['skipped_document_indices']:
+            print('Cannot score the complete test split: missing documents or gold labels. Obtain the official evaluation protocol.')
+        else:
+            winner = max((r for r in scores if r['split'] == 'dev'), key=lambda r: r['macro_f1'])['model']
+            if winner == 'bilstm':
+                truth, predictions = predict_loader(model, DataLoader(make_dataset(test_df), batch_size=CONFIG['batch_size']))
+            else:
+                truth = test_df.label
+                predictions = classical[winner].predict(vectorizer.transform(test_df.text))
+            print(evaluate(winner, truth, predictions, split='test'))
+            test_df.assign(prediction=predictions).to_csv(OUTPUT / f'{winner}_test_predictions.csv', index=False)
+    else:
+        print('Final test evaluation is disabled during development.')
+

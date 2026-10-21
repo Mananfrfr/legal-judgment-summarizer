@@ -1,0 +1,5 @@
+model,best_epoch,val_rougeL,checkpoint,reused
+L120_tfidf_budgeted_no_roles,3,0.30575783734830286,/content/drive/MyDrive/legal_summarizer_stage3_6_artifacts/model_checkpoints/L120_tfidf_budgeted_no_roles/best_selector.pt,False
+L120_tfidf_budgeted_roles,3,0.30364744960241,/content/drive/MyDrive/legal_summarizer_stage3_6_artifacts/model_checkpoints/L120_tfidf_budgeted_roles/best_selector.pt,False
+L120_greedy_rouge_no_roles,1,0.30102930087624113,/content/drive/MyDrive/legal_summarizer_stage3_6_artifacts/model_checkpoints/L120_greedy_rouge_no_roles/best_selector.pt,False
+L120_greedy_rouge_roles,1,0.30191293894395915,/content/drive/MyDrive/legal_summarizer_stage3_6_artifacts/model_checkpoints/L120_greedy_rouge_roles/best_selector.pt,False

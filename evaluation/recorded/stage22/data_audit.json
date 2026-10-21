@@ -1,0 +1,53 @@
+{
+  "train": {
+    "raw_documents": 247,
+    "represented_documents": 245,
+    "sentences": 28986,
+    "skipped_document_indices": [
+      69,
+      225
+    ],
+    "unlabeled": 0,
+    "multi_annotation_documents": 0,
+    "multi_annotation_disagreements": 0,
+    "annotation_selection_policy": "adjudicated_if_marked_else_first_nonempty",
+    "multi_annotation_details": []
+  },
+  "dev": {
+    "raw_documents": 30,
+    "represented_documents": 30,
+    "sentences": 2879,
+    "skipped_document_indices": [],
+    "unlabeled": 0,
+    "multi_annotation_documents": 1,
+    "multi_annotation_disagreements": 1,
+    "annotation_selection_policy": "adjudicated_if_marked_else_first_nonempty",
+    "multi_annotation_details": [
+      {
+        "doc_index": 4,
+        "total_annotation_sets": 2,
+        "nonempty_annotation_sets": 2,
+        "selected_annotation_index": 0,
+        "selection_reason": "first_nonempty",
+        "annotation_sets_disagree": true
+      }
+    ]
+  },
+  "test": {
+    "raw_documents": 50,
+    "represented_documents": 50,
+    "sentences": 4158,
+    "skipped_document_indices": [],
+    "unlabeled": 0,
+    "multi_annotation_documents": 0,
+    "multi_annotation_disagreements": 0,
+    "annotation_selection_policy": "adjudicated_if_marked_else_first_nonempty",
+    "multi_annotation_details": []
+  },
+  "train_dev_duplicate_documents": 0,
+  "train_dev_shared_sentence_texts": 83,
+  "train_test_duplicate_documents": 0,
+  "train_test_shared_sentence_texts": 92,
+  "dev_test_duplicate_documents": 0,
+  "dev_test_shared_sentence_texts": 14
+}

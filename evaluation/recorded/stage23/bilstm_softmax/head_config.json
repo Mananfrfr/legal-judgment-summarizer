@@ -1,0 +1,21 @@
+{
+  "name": "bilstm_softmax",
+  "use_crf": false,
+  "seed": 42,
+  "cfg": {
+    "max_length": 256,
+    "max_target_context": 192,
+    "encoder_batch_size": 16,
+    "hidden_size": 128,
+    "dropout": 0.3,
+    "doc_batch_size": 4,
+    "epochs": 25,
+    "patience": 5,
+    "lr": 0.001,
+    "weight_decay": 0.01,
+    "max_grad_norm": 1.0
+  },
+  "feature_checkpoint_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615",
+  "train_digest": "d94560fff3f3dd1c55be28041d43542e04e2a4cbb7f0a26cdc897d7d130a8d5b",
+  "dev_digest": "803ab8ae6b2c5aa3892ecf743ccc43a1c6f8b887a0bc66268eaf02c588ffcecc"
+}

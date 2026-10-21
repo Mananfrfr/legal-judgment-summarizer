@@ -1,0 +1,10 @@
+# Install in the notebook's isolated environment, not into Colab's base environment.
+# PyTorch is installed separately for the selected CPU/CUDA runtime.
+transformers==4.57.6
+huggingface-hub==0.36.2
+safetensors==0.8.0
+tokenizers==0.22.2
+numpy==2.4.6
+PyMuPDF==1.28.2
+pytesseract==0.3.13
+Pillow==11.3.0

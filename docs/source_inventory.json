@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Stage4_4_1_Full_Document_Evidence_Colab.ipynb",
+    "source_url": "https://colab.research.google.com/drive/10XAu2GRxYGb3Knjzdej2_Mw_fPfbivgF",
+    "source_sha256": "472377866b053ad4b64b0faafddb32f0cf49af2af666581dd1af4558fea41e5f",
+    "code_archive": "research/Stage4_4_1_Full_Document_Evidence_Colab_10XAu2.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_6_budget_matched_final_test.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1QOhXISGPJgZWxAltk_ukONatD4DH2Mr8",
+    "source_sha256": "67b12cda51a688efcd7fa7b2545523010722d025f577b8dc67cac6e5514d40c1",
+    "code_archive": "research/legal_summarizer_stage3_6_budget_matched_final_test_1QOhXI.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_6_KAGGLE_HEAD_FIXED.ipynb",
+    "source_url": "https://colab.research.google.com/drive/10pi2SmoDLCvLtLaqeed8g92FFTFy8L7o",
+    "source_sha256": "77073385e1de04965419004594ab0f6a159c8080f4f4cd219e3d791a20afbe54",
+    "code_archive": "research/legal_summarizer_stage3_6_KAGGLE_HEAD_FIXED_10pi2S.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_5_coverage_weaklabels.ipynb",
+    "source_url": "https://colab.research.google.com/drive/12HX_0FCqasvZ1lsTVWQfnFiS3C-Go8V7",
+    "source_sha256": "ca69e8cd2bbdef113da1ea039f6271594b2641d3acdc6ecaf39a944c3cb0d8c9",
+    "code_archive": "research/legal_summarizer_stage3_5_coverage_weaklabels_12HX_0.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_4_ARCHIVE_1000train_40dev_completed.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1QzPveIHBu_W21lLuJes7MDUjFIdsj_mh",
+    "source_sha256": "0a3cd5dd0d0acce3cb8b598121c14dc3f3cca74469ed5227d86f2d081e6a9106",
+    "code_archive": "research/legal_summarizer_stage3_4_ARCHIVE_1000train_40dev_completed_1QzPve.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_3_ARCHIVE_200train_40dev.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1kSXTOXYEXsr8Z6iuyaY7NnLBJ4w158Bh",
+    "source_sha256": "e9cd4da69efd3e97584d4cb497d3337bcd6c3ce08bf415991c13f60ac676a1ca",
+    "code_archive": "research/legal_summarizer_stage3_3_ARCHIVE_200train_40dev_1kSXTO.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_2_PILOT_ARCHIVE_60train_15dev.ipynb",
+    "source_url": "https://colab.research.google.com/drive/14GuXCmGyXizx-uqVjxrFqCFk-VNCnkt_",
+    "source_sha256": "6f8725cb3da346194e47b6767aedcfa2ea8515ad579e97a75e97239aaf4ac698",
+    "code_archive": "research/legal_summarizer_stage3_2_PILOT_ARCHIVE_60train_15dev_14GuXC.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_1_inext_evaluation.ipynb",
+    "source_url": "https://colab.research.google.com/drive/10RVEGRXsKxP4e9Ip2Wae7pMqrUeC44Al",
+    "source_sha256": "5752ae3a90fa61a45d968f6eddf434cbca6700bd8782eaaf949c78698880ac7b",
+    "code_archive": "research/legal_summarizer_stage3_1_inext_evaluation_10RVEG.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_extractive.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1VTsI8qbuTz2dC2CxcTQcVHudDJ3RbM0Y",
+    "source_sha256": "c3027a0acc858d431f89726185864372e625373c8c73561cef1606efdddb8ac2",
+    "code_archive": "research/legal_summarizer_stage3_extractive_1VTsI8.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage3_extractive.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1K4Pb4ZRe_HGz7Ix0A7c4hIEl11QlcYHK",
+    "source_sha256": "ed7160bd1316b736b674f0bab4e0f694f8404dfa43e39f0344dd3558c29ebb0b",
+    "code_archive": "research/legal_summarizer_stage3_extractive_1K4Pb4.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage2.4.ipynb",
+    "source_url": "https://colab.research.google.com/drive/10sm9wM9emwo_G67BF28iC-61ZLoFP_cW",
+    "source_sha256": "ac7a3e4cbdb03f1dcbeca0386d0e9832831776baf0f98d9ce605224464fa33c2",
+    "code_archive": "research/legal_summarizer_stage2.4_10sm9w.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage2.3_inlegalbert,bilstm,crf.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1KJBP3cDoMGBtW024OgHgKzEoHJfWlbW2",
+    "source_sha256": "5adcf3d8082bc241a82371d80221feb44e612aa7724037396b2d2916d82904d5",
+    "code_archive": "research/legal_summarizer_stage2.3_inlegalbert_bilstm_crf_1KJBP3.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage2.2_inlegalbert.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1gwj7yq9S_nh-Xj-r6MfaSGxUIXwHEsR6",
+    "source_sha256": "14a214d9720fe765cbe56af2bcb252d4f6d0e39b877bdd67a822c77304bb8431",
+    "code_archive": "research/legal_summarizer_stage2.2_inlegalbert_1gwj7y.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage2_inlegalbert.ipynb",
+    "source_url": "https://colab.research.google.com/drive/1UtuP2t8FIytCX47CwIA-RfPbH9XTtBKD",
+    "source_sha256": "65cea4b39bba57737b333fe3765348a15484c72a43e1803d32a2934474d81944",
+    "code_archive": "research/legal_summarizer_stage2_inlegalbert_1UtuP2.py.txt"
+  },
+  {
+    "name": "legal_summarizer_stage1.ipynb",
+    "source_url": "https://colab.research.google.com/drive/107VMwSdoa_LPvxybtAeEIYT7SzPmsKWt",
+    "source_sha256": "3229cb1f1eecdbb72527aad3ab4c3d179b629086a03ccab1d10fea4448b10727",
+    "code_archive": "research/legal_summarizer_stage1_107VMw.py.txt"
+  }
+]

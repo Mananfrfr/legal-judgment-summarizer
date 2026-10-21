@@ -1,0 +1,22 @@
+[
+  {
+    "stage": "stage22",
+    "archive": "stage2_2_results_reports (2).zip",
+    "sha256": "87b7e0e43c0d9f31ff91dd00a4afe6936b930679bf9a20c7ae8bdd1d297508fe"
+  },
+  {
+    "stage": "stage23",
+    "archive": "stage2_3_research_results.zip",
+    "sha256": "21fcde443922ca934ddc6e90a011ceeb5842233dc9f199853118237190e9ac93"
+  },
+  {
+    "stage": "stage24",
+    "archive": "stage2_4_research_results.zip",
+    "sha256": "4181dc24688d8a8cf2dd1292f6840aed5f84b0715007fde913ac870f5e2b7f85"
+  },
+  {
+    "stage": "stage36",
+    "archive": "stage3_6_inabs_fair_label_final_results.zip",
+    "sha256": "736441f37b8342a9ade61d083b1a18a44bab4af39dbecd89fa84f5d760a56c16"
+  }
+]

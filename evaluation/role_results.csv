@@ -1,0 +1,12 @@
+stage,model,split,accuracy,macro_f1,weighted_f1,status
+Stage 1,majority,dev,0.341785,0.039188,0.174122,"recorded, not rerun"
+Stage 1,knn,dev,0.25495,0.184049,0.214147,"recorded, not rerun"
+Stage 1,logreg,dev,0.466134,0.392117,0.480561,"recorded, not rerun"
+Stage 1,svm,dev,0.479333,0.384932,0.49397,"recorded, not rerun"
+Stage 1,word_bilstm,dev,0.500521,0.413521,0.508193,"recorded, not rerun"
+Stage 2.2,target256,dev,0.6818339701285169,0.5165540777741153,0.6703547077791125,"recorded, not rerun"
+Stage 2.2,context256,dev,0.7631121917332407,0.6149071943561737,0.7569308524444324,"recorded, not rerun"
+Stage 2.3,bilstm_softmax,dev,0.8311913858978812,0.6540553641463259,0.8236828839054482,"recorded, not rerun"
+Stage 2.3,bilstm_crf,dev,0.8311913858978812,0.6515637946096906,0.8238851524085384,"recorded, not rerun"
+Stage 2.4,bilstm_weighted_ce_seed42,dev,0.8270232719694338,0.6479254608218196,0.82109246619808,"recorded, not rerun"
+Stage 2.4,bilstm_weighted_focal_seed42,dev,0.8166029871483154,0.6481195534017312,0.8105073784154543,"recorded, not rerun"

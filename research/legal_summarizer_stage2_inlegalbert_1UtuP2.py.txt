@@ -1,0 +1,729 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Run once at the top of a fresh Colab session.
+# Notebook-only setup: %pip -q install "transformers>=4.50,<5" "huggingface-hub>=0.30,<2" "torch>=2.6,<3" "scikit-learn>=1.4,<2" "pandas>=2,<3" "pyarrow>=15,<25" "tqdm>=4.66"
+
+import os, json, random, hashlib, time, platform, importlib.metadata
+from pathlib import Path
+from itertools import chain
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torch.nn import functional as F
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+from IPython.display import display
+from tqdm.auto import tqdm
+import pyarrow.parquet as pq
+from transformers import (AutoTokenizer, AutoModelForSequenceClassification,
+                          DataCollatorWithPadding, get_linear_schedule_with_warmup)
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+OUTPUT = Path('/content/stage2_artifacts' if Path('/content').exists() else 'stage2_artifacts')
+OUTPUT.mkdir(parents=True, exist_ok=True)
+MODEL_ID = 'law-ai/InLegalBERT'
+CONFIG = dict(max_length=128, train_batch_size=16, eval_batch_size=32,
+              grad_accum_steps=2, epochs=3, learning_rate=2e-5,
+              weight_decay=0.01, warmup_ratio=0.1, max_grad_norm=1.0,
+              seed=SEED, selection_metric='dev_macro_f1')
+RUN_TRAINING = True
+RUN_FINAL_TEST = False  # Keep test labels untouched during experimentation.
+print('Device:', DEVICE, '| Available GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')
+if DEVICE.type != 'cuda':
+    print('IMPORTANT: Switch Colab Runtime -> Change runtime type -> T4 GPU, then run all again.')
+(OUTPUT/'experiment_config.json').write_text(json.dumps(dict(model=MODEL_ID, **CONFIG), indent=2))
+
+# Dataset access: check HF_TOKEN or use locally uploaded official JSON files.
+# Invalid or missing credentials never cause cascading IPython/SystemExit tracebacks.
+from huggingface_hub import hf_hub_download, HfApi
+
+REPO = 'opennyaiorg/InRhetoricalRoles'
+DATASET_URL = f'https://huggingface.co/datasets/{REPO}'
+DATA_DIR = Path('/content') if Path('/content').exists() else Path.cwd()
+SPLITS = ('train', 'dev', 'test')
+raw, split_files = {}, {}
+DATASET_READY = False
+DATASET_STATUS = 'Not loaded'
+
+class DatasetSetupNeeded(Exception):
+    """Missing authentication or access permission; display without traceback."""
+
+def _load_splits():
+    paths = {split: DATA_DIR / f'{split}.json' for split in SPLITS}
+    if all(path.is_file() for path in paths.values()):
+        loaded = {}
+        print(f'Loading locally provided JSON dataset from {DATA_DIR}')
+        for split, file in paths.items():
+            with file.open(encoding='utf-8') as handle:
+                loaded[split] = json.load(handle)
+            if not isinstance(loaded[split], list):
+                raise ValueError(f'{file.name}: expected a list of annotated documents')
+            print(f'{split}: {len(loaded[split])} documents')
+        return loaded, {split: [str(path)] for split, path in paths.items()}, 'local JSON'
+
+    token = None
+    secret_problem = None
+    try:
+        from google.colab import userdata
+        token = userdata.get('HF_TOKEN')
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except Exception as exc:
+        secret_problem = type(exc).__name__
+    token = (token or os.environ.get('HF_TOKEN') or '').strip()
+
+    if not token:
+        missing = ', '.join(p.name for p in paths.values() if not p.exists())
+        detail = f'Colab secret issue: {secret_problem}.\n' if secret_problem else ''
+        raise DatasetSetupNeeded(
+            'HF_TOKEN is missing.\n' + detail +
+            'Create a Hugging Face Read token at https://huggingface.co/settings/tokens.\n'
+            'Add/update HF_TOKEN in Colab > Secrets (key icon) and enable notebook access.\n'
+            f'Accept access to {DATASET_URL} with that account.\n'
+            f'Or upload all three official JSON files to {DATA_DIR}: train.json, dev.json, test.json. '
+            f'(Currently missing: {missing})'
+        )
+    if not token.startswith('hf_'):
+        raise DatasetSetupNeeded(
+            'HF_TOKEN does not look like a Hugging Face access token (normally starts with hf_).\n'
+            'Copy ONLY the token value, without quotes, from https://huggingface.co/settings/tokens.\n'
+            'Replace HF_TOKEN in Colab Secrets, enable notebook access, and rerun.'
+        )
+
+    api = HfApi(token=token)
+    try:
+        account = api.whoami(token=token).get('name', '(unknown)')
+        print('Hugging Face authentication successful. Account:', account)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        raise DatasetSetupNeeded(
+            f'Hugging Face rejected HF_TOKEN (HTTP {status or "authentication failure"}).\n'
+            'This is not a bug in the ML model. The token stored in Colab Secrets '
+            'is invalid, revoked, expired, or copied incorrectly.\n'
+            '1. Create a NEW Read token at https://huggingface.co/settings/tokens.\n'
+            '2. In Colab > Secrets, replace HF_TOKEN with that token and enable notebook access.\n'
+            '3. Restart the runtime and use Runtime > Run all.\n'
+            'Do not paste your token into a notebook cell or share it.'
+        ) from None
+
+    try:
+        revision = api.dataset_info(repo_id=REPO, token=token).sha
+        names = api.list_repo_files(repo_id=REPO, repo_type='dataset',
+                                    revision=revision, token=token)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        if status in (401, 403):
+            raise DatasetSetupNeeded(
+                f'Token works, but access to {DATASET_URL} was denied (HTTP {status}).\n'
+                f'Sign in as {account}, request/accept access to the dataset, '
+                'then rerun the notebook. A fine-grained token also needs access to this repo.'
+            ) from None
+        raise RuntimeError(f'Unable to list dataset files: {type(exc).__name__}') from exc
+
+    files = {split: sorted(f for f in names if f.startswith(f'data/{split}-')
+                           and f.endswith('.parquet')) for split in SPLITS}
+    if not all(files.values()):
+        raise ValueError('Dataset structure changed: expected data/train-, data/dev- '
+                         'and data/test- Parquet shards. Available files: ' + str(names))
+
+    loaded = {}
+    for split, filenames in files.items():
+        records = []
+        for filename in filenames:
+            try:
+                file_path = hf_hub_download(repo_id=REPO, filename=filename,
+                                            repo_type='dataset', revision=revision, token=token)
+            except Exception as exc:
+                status = getattr(getattr(exc, 'response', None), 'status_code', None)
+                if status in (401, 403) or 'GatedRepoError' in type(exc).__name__:
+                    raise DatasetSetupNeeded(
+                        f'Token authenticated as {account}, but download access is denied '
+                        f'(HTTP {status or "401/403"}) for {filename}.\n'
+                        f'Visit {DATASET_URL} with the same account and accept/request access.\n'
+                        'If using a fine-grained token, enable read access to this gated dataset.'
+                    ) from None
+                raise RuntimeError(f'Failed to download {filename}: {type(exc).__name__}') from exc
+            records.extend(pq.read_table(file_path).to_pylist())
+        loaded[split] = records
+        print(f'{split}: {len(records)} documents from {len(filenames)} file(s)')
+    return loaded, files, revision
+
+try:
+    raw, split_files, revision = _load_splits()
+except DatasetSetupNeeded as exc:
+    DATASET_STATUS = str(exc)
+    print('DATASET SETUP NEEDED — training was skipped safely.\n')
+    print(DATASET_STATUS)
+else:
+    DATASET_READY = True
+    DATASET_STATUS = 'Loaded successfully'
+    (OUTPUT / 'dataset.json').write_text(json.dumps(
+        dict(repo=REPO, revision=revision, files=split_files), indent=2))
+    print('Dataset loaded successfully! Continue to the next cells.')
+
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    LABELS = ['ANALYSIS', 'ARG_PETITIONER', 'ARG_RESPONDENT', 'FAC', 'ISSUE', 'NONE',
+              'PREAMBLE', 'PRE_NOT_RELIED', 'PRE_RELIED', 'RATIO', 'RLC', 'RPC', 'STA']
+    LABEL2ID = {label: i for i, label in enumerate(LABELS)}
+    ID2LABEL = {i: label for label, i in LABEL2ID.items()}
+
+    def json_to_df(documents, split):
+        rows, skipped, multiple_sets = [], [], []
+        for doc_index, doc in enumerate(documents):
+            annotations = doc.get('annotations') or []
+            # A document may contain labels from several annotators. Never merge their
+            # results: this would duplicate offsets and may invent contradictory labels.
+            candidates = []
+            for annotation_index, annotation in enumerate(annotations):
+                if not isinstance(annotation, dict):
+                    continue
+                results = annotation.get('result') or []
+                spans_here = [r['value'] for r in results if isinstance(r, dict)
+                              and isinstance(r.get('value'), dict)
+                              and 'text' in r['value']]
+                if spans_here:
+                    candidates.append((annotation_index, spans_here, annotation))
+
+            if not candidates:
+                skipped.append(doc_index)
+                continue
+
+            # Prefer an explicitly adjudicated/ground-truth annotation, if supplied.
+            # The Hugging Face Parquet schema often contains only 'result' and lacks
+            # adjudication metadata; in that case, use a documented deterministic policy.
+            adjudicated = [item for item in candidates if
+                           item[2].get('ground_truth') is True or
+                           item[2].get('is_adjudicated') is True]
+            if len(adjudicated) > 1:
+                raise ValueError(f'{split} document {doc_index}: more than one annotation '
+                                 'is marked adjudicated; review the source data.')
+            selected_idx, spans, _ = (adjudicated[0] if adjudicated else candidates[0])
+            selection_reason = 'adjudicated' if adjudicated else 'first_nonempty'
+
+            if len(annotations) > 1:
+                # Compare the entire labeled sentence sequence across nonempty sets.
+                # Keep only counts/indices in audit, never duplicate the document text.
+                def signature(annotator_spans):
+                    records = [(v.get('start'), v.get('end'), v.get('text'),
+                                tuple(v.get('labels') or ())) for v in annotator_spans]
+                    return tuple(sorted(records, key=lambda x: (str(x[0]), str(x[1]), str(x[2]))))
+                disagree = len({signature(item[1]) for item in candidates}) > 1
+                multiple_sets.append(dict(doc_index=doc_index,
+                                          total_annotation_sets=len(annotations),
+                                          nonempty_annotation_sets=len(candidates),
+                                          selected_annotation_index=selected_idx,
+                                          selection_reason=selection_reason,
+                                          annotation_sets_disagree=disagree))
+            for value in spans:
+                if not isinstance(value.get('start'), int) or not isinstance(value.get('end'), int):
+                    raise ValueError(f'{split} document {doc_index}: missing sentence offsets')
+                if value['end'] <= value['start'] or not value['text'].strip():
+                    raise ValueError(f'{split} document {doc_index}: invalid or empty span')
+                labels = value.get('labels') or []
+                if len(labels) > 1:
+                    raise ValueError('Expected one rhetorical role per sentence')
+                label = labels[0] if labels else None
+                if label is not None and label not in LABEL2ID:
+                    raise ValueError(f'Unknown label: {label}')
+                rows.append(dict(split=split, doc_index=doc_index, annotation_index=selected_idx, meta=doc.get('meta'),
+                                 start=value['start'], end=value['end'], text=value['text'], label=label))
+        df = pd.DataFrame(rows, columns=['split','doc_index','annotation_index','meta','start','end','text','label'])
+        df = df.sort_values(['doc_index', 'start', 'end']).reset_index(drop=True)
+        if df.duplicated(['doc_index', 'start', 'end']).any():
+            raise ValueError(f'{split}: duplicate sentence spans')
+        df['sentence_index'] = df.groupby('doc_index').cumcount()
+        report = dict(raw_documents=len(documents), represented_documents=int(df.doc_index.nunique()),
+                      sentences=len(df), skipped_document_indices=skipped,
+                      unlabeled=int(df.label.isna().sum()),
+                      multi_annotation_documents=len(multiple_sets),
+                      multi_annotation_disagreements=sum(x['annotation_sets_disagree'] for x in multiple_sets),
+                      annotation_selection_policy='adjudicated_if_marked_else_first_nonempty',
+                      multi_annotation_details=multiple_sets)
+        return df, report
+
+    frames, audit = {}, {}
+    for split in raw:
+        frames[split], audit[split] = json_to_df(raw[split], split)
+    for split in ['train', 'dev']:
+        if frames[split].empty or frames[split].label.isna().any():
+            raise ValueError(f'{split}: requires nonempty fully labeled data')
+
+    def document_hashes(df):
+        return {hashlib.sha256(' '.join(' '.join(g.text).split()).encode()).hexdigest()
+                for _, g in df.groupby('doc_index')}
+
+    for a, b in [('train','dev'), ('train','test'), ('dev','test')]:
+        overlap = document_hashes(frames[a]) & document_hashes(frames[b])
+        audit[f'{a}_{b}_duplicate_documents'] = len(overlap)
+        if overlap:
+            raise ValueError(f'{a}/{b}: {len(overlap)} identical documents; resolve split leakage first')
+        audit[f'{a}_{b}_shared_sentence_texts'] = len(set(frames[a].text) & set(frames[b].text))
+    (OUTPUT / 'data_audit.json').write_text(json.dumps(audit, indent=2))
+    # Full document-level provenance, including all multi-annotator choices, is in this JSON.
+    print('Full data audit:', OUTPUT / 'data_audit.json')
+    for split in ['train', 'dev', 'test']:
+        info = audit[split]
+        print(f'{split}: {info["sentences"]} sentences; '
+              f'{info["multi_annotation_documents"]} documents with multiple annotation sets '
+              f'({info["multi_annotation_disagreements"]} with different annotations); '
+              f'{info["unlabeled"]} unlabeled sentences')
+    if any(audit[s]['multi_annotation_disagreements'] for s in ['train','dev','test']):
+        print('NOTICE: Some annotation sets disagree. In absence of an adjudication marker, '
+              'the first nonempty set was selected. Results reflect that policy, not verified adjudicated gold labels.')
+    train_df, dev_df, test_df = (frames[s] for s in ['train','dev','test'])
+    print(train_df.label.value_counts())
+
+STAGE2_READY = bool(globals().get('DATASET_READY', False)) and 'train_df' in globals()
+if not STAGE2_READY:
+    print('Skipped: load and prepare the official dataset in the previous cells.')
+else:
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=True)
+    example = 'Accordingly, the appeal is dismissed.'
+    pieces = tokenizer.tokenize(example)
+    encoded = tokenizer(example, truncation=True, max_length=CONFIG['max_length'])
+    print('Sentence:', example)
+    print('Subword tokens:', pieces)
+    print('IDs:', encoded['input_ids'])
+    print('Attention mask:', encoded['attention_mask'])
+    lengths = [len(tokenizer.encode(t, truncation=False)) for t in train_df.text.tolist()[:400]]
+    print('Token-length preview: sample median=',int(np.median(lengths)),
+          'sample >128=',sum(x>128 for x in lengths),'of',len(lengths))
+    print('Prepared train / dev sentences:',len(train_df),'/',len(dev_df))
+
+if not STAGE2_READY:
+    print('Skipped: dataset unavailable.')
+else:
+    # A label-ID mismatch would invalidate the baseline comparison: reuse Stage 1 LABELS.
+    assert len(LABELS) == 13 and not train_df.label.isna().any() and not dev_df.label.isna().any()
+    class SentenceDataset(Dataset):
+        def __init__(self, frame, tokenizer, max_length):
+            self.encoded = tokenizer(frame.text.astype(str).tolist(),
+                                     truncation=True, max_length=max_length,
+                                     padding=False, return_attention_mask=True)
+            self.labels = [LABEL2ID[x] for x in frame.label.tolist()]
+        def __len__(self):
+            return len(self.labels)
+        def __getitem__(self, idx):
+            return {**{key: values[idx] for key,values in self.encoded.items()},
+                    'labels': self.labels[idx]}
+
+    train_ds = SentenceDataset(train_df, tokenizer, CONFIG['max_length'])
+    dev_ds = SentenceDataset(dev_df, tokenizer, CONFIG['max_length'])
+    collator = DataCollatorWithPadding(tokenizer=tokenizer, return_tensors='pt')
+    generator = torch.Generator().manual_seed(SEED)
+    train_loader = DataLoader(train_ds,batch_size=CONFIG['train_batch_size'],
+                              shuffle=True,collate_fn=collator,generator=generator)
+    dev_loader = DataLoader(dev_ds,batch_size=CONFIG['eval_batch_size'],
+                            shuffle=False,collate_fn=collator)
+    print('Batch sanity check:')
+    b = next(iter(train_loader))
+    print({k:tuple(v.shape) for k,v in b.items()})
+    assert b['labels'].min() >= 0 and b['labels'].max() < len(LABELS)
+
+TRAINING_FINISHED = False
+BEST_MODEL_DIR = OUTPUT / 'best_inlegalbert'
+
+@torch.no_grad()
+def predict_labels(model, loader):
+    model.eval()
+    predicted_ids, true_ids = [], []
+    for batch in tqdm(loader, desc='Evaluating', leave=False):
+        gold = batch.pop('labels')
+        inputs = {k:v.to(DEVICE) for k,v in batch.items()}
+        logits = model(**inputs).logits
+        predicted_ids.extend(logits.argmax(dim=-1).cpu().tolist())
+        true_ids.extend(gold.tolist())
+    return np.array(true_ids), np.array(predicted_ids)
+
+def score_ids(y_true, y_pred):
+    all_ids = list(range(len(LABELS)))
+    return {'accuracy':accuracy_score(y_true,y_pred),
+            'macro_f1':f1_score(y_true,y_pred,labels=all_ids,average='macro',zero_division=0),
+            'weighted_f1':f1_score(y_true,y_pred,labels=all_ids,average='weighted',zero_division=0)}
+
+if not STAGE2_READY:
+    print('Training skipped — dataset not available.')
+elif not RUN_TRAINING:
+    print('Training skipped — RUN_TRAINING=False.')
+elif DEVICE.type != 'cuda':
+    print('Training skipped — select a Colab T4 GPU and rerun from the top.')
+else:
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_ID, num_labels=len(LABELS), id2label=ID2LABEL, label2id=LABEL2ID
+    ).to(DEVICE)
+    print('A warning about a newly initialized classification head is EXPECTED.')
+    opt = torch.optim.AdamW(model.parameters(), lr=CONFIG['learning_rate'],
+                            weight_decay=CONFIG['weight_decay'])
+    import math
+    steps_per_epoch = math.ceil(len(train_loader)/CONFIG['grad_accum_steps'])
+    total_steps = steps_per_epoch * CONFIG['epochs']
+    scheduler = get_linear_schedule_with_warmup(
+        opt, num_warmup_steps=int(total_steps*CONFIG['warmup_ratio']),
+        num_training_steps=total_steps
+    )
+    use_amp = DEVICE.type == 'cuda'
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+    history, best_macro = [], -1.0
+    opt.zero_grad(set_to_none=True)
+
+    for epoch in range(1,CONFIG['epochs']+1):
+        model.train()
+        batch_losses = []
+        bar = tqdm(train_loader,desc=f'Train epoch {epoch}/{CONFIG["epochs"]}')
+        n_batches = len(train_loader)
+        for step,batch in enumerate(bar):
+            inputs = {k:v.to(DEVICE) for k,v in batch.items()}
+            # Last accumulation group may contain fewer batches.
+            group_start = (step // CONFIG['grad_accum_steps'])*CONFIG['grad_accum_steps']
+            group_size = min(CONFIG['grad_accum_steps'],n_batches-group_start)
+            with torch.amp.autocast('cuda', enabled=use_amp):
+                loss = model(**inputs).loss
+            if not torch.isfinite(loss).item():
+                raise RuntimeError('Loss is NaN or infinite; check data and learning rate.')
+            scaler.scale(loss/group_size).backward()
+            batch_losses.append(float(loss.item()))
+            if ((step+1)%CONFIG['grad_accum_steps']==0) or (step+1==n_batches):
+                scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(model.parameters(),CONFIG['max_grad_norm'])
+                scaler.step(opt)
+                scaler.update()
+                scheduler.step()
+                opt.zero_grad(set_to_none=True)
+            bar.set_postfix(loss=f'{np.mean(batch_losses[-20:]):.3f}')
+        true_ids, pred_ids = predict_labels(model,dev_loader)
+        metrics = score_ids(true_ids,pred_ids)
+        row = {'epoch':epoch, 'mean_train_batch_loss':float(np.mean(batch_losses)), **{'dev_'+k:v for k,v in metrics.items()}}
+        history.append(row)
+        print(row)
+        pd.DataFrame(history).to_csv(OUTPUT/'inlegalbert_training_history.csv',index=False)
+        if metrics['macro_f1']>best_macro:
+            best_macro = metrics['macro_f1']
+            BEST_MODEL_DIR.mkdir(parents=True,exist_ok=True)
+            model.save_pretrained(BEST_MODEL_DIR, safe_serialization=True)
+            tokenizer.save_pretrained(BEST_MODEL_DIR)
+            (OUTPUT/'best_dev_metrics.json').write_text(json.dumps({'best_epoch':epoch,**metrics},indent=2))
+            print('Saved best dev Macro F1 checkpoint:', BEST_MODEL_DIR)
+    TRAINING_FINISHED = True
+    del model
+    if DEVICE.type=='cuda': torch.cuda.empty_cache()
+
+if not (BEST_MODEL_DIR / 'config.json').is_file():
+    print('No saved model checkpoint found under:', BEST_MODEL_DIR)
+    print('Restore a previous stage2_artifacts.zip OR train InLegalBERT first.')
+elif 'dev_loader' not in globals() or 'dev_df' not in globals():
+    print('Run the dataset, preprocessing and DataLoader setup cells before dev evaluation.')
+else:
+    model = AutoModelForSequenceClassification.from_pretrained(BEST_MODEL_DIR).to(DEVICE)
+    true_ids,pred_ids = predict_labels(model,dev_loader)
+    metrics = score_ids(true_ids,pred_ids)
+    result = {'model':'InLegalBERT_sentence','split':'dev',**metrics}
+    (OUTPUT/'inlegalbert_dev_metrics.json').write_text(json.dumps(result,indent=2))
+    pd.DataFrame(confusion_matrix(true_ids,pred_ids,labels=list(range(len(LABELS)))),
+                 index=LABELS,columns=LABELS).to_csv(OUTPUT/'inlegalbert_dev_confusion.csv')
+    report = classification_report(true_ids,pred_ids,labels=list(range(len(LABELS))),
+                                   target_names=LABELS,output_dict=True,zero_division=0)
+    pd.DataFrame(report).T.to_csv(OUTPUT/'inlegalbert_dev_class_report.csv')
+    predictions = dev_df.copy()
+    predictions['prediction'] = [ID2LABEL[i] for i in pred_ids]
+    predictions['correct'] = [a==b for a,b in zip(true_ids,pred_ids)]
+    predictions.to_csv(OUTPUT/'inlegalbert_dev_predictions.csv',index=False)
+    print('Our new VALIDATION result (not a test or SOTA score):',result)
+    print('Stage 1 BiLSTM on the same dev split: accuracy=0.5005; Macro F1=0.4135; Weighted F1=0.5082')
+    display(pd.DataFrame([{'model':'BiLSTM (Stage 1)','accuracy':0.5005,'macro_f1':0.4135,'weighted_f1':0.5082},result]).set_index('model')[['accuracy','macro_f1','weighted_f1']])
+    display(predictions.loc[~predictions.correct,['text','label','prediction']].head(12))
+
+if not TRAINING_FINISHED:
+    print('No trained InLegalBERT checkpoint to demonstrate yet.')
+else:
+    example = 'Accordingly, the appeal is dismissed.'
+    tokens = tokenizer(example,return_tensors='pt',truncation=True,max_length=CONFIG['max_length'])
+    tokens = {k:v.to(DEVICE) for k,v in tokens.items()}
+    model.eval()
+    with torch.no_grad():
+        logits = model(**tokens).logits[0]
+        prob = torch.softmax(logits,dim=-1).cpu().numpy()
+    order = np.argsort(-prob)[:5]
+    print('Sentence:',example)
+    print('Actual fine-tuned model top prediction:',ID2LABEL[int(order[0])])
+    display(pd.DataFrame([{'label':ID2LABEL[int(i)],'probability':float(prob[i])} for i in order]))
+
+if RUN_FINAL_TEST:
+    if not TRAINING_FINISHED:
+        print('Train and freeze a model before enabling final evaluation.')
+    elif test_df.empty or test_df.label.isna().any():
+        print('Test labels are missing; cannot calculate gold-label metrics.')
+    else:
+        test_ds = SentenceDataset(test_df,tokenizer,CONFIG['max_length'])
+        test_loader = DataLoader(test_ds,batch_size=CONFIG['eval_batch_size'],
+                                 shuffle=False,collate_fn=collator)
+        test_true,test_pred = predict_labels(model,test_loader)
+        test_metrics = score_ids(test_true,test_pred)
+        print('FINAL TEST — do not tune based on this:',test_metrics)
+        (OUTPUT/'final_test_metrics.json').write_text(json.dumps(test_metrics,indent=2))
+else:
+    print('Final test evaluation is OFF by default (correct for development).')
+
+# Recover existing Stage 2 *validation* artifacts if available. No training here.
+from pathlib import Path, PurePosixPath
+from sklearn.metrics import classification_report, confusion_matrix
+import numpy as np, pandas as pd, zipfile
+
+ART = Path('/content/stage2_artifacts' if Path('/content').exists() else 'stage2_artifacts')
+ART.mkdir(parents=True, exist_ok=True)
+ROLE_NAMES = ['ANALYSIS', 'ARG_PETITIONER', 'ARG_RESPONDENT', 'FAC', 'ISSUE', 'NONE',
+              'PREAMBLE', 'PRE_NOT_RELIED', 'PRE_RELIED', 'RATIO', 'RLC', 'RPC', 'STA']
+PRED_FILE = ART / 'inlegalbert_dev_predictions.csv'
+REPORT_FILE = ART / 'inlegalbert_dev_class_report.csv'
+CONFUSION_FILE = ART / 'inlegalbert_dev_confusion.csv'
+
+
+def restore_stage2_zip(zip_path):
+    """Safely extract our *flat-root* artifacts ZIP into ART (not /content)."""
+    zip_path = Path(zip_path)
+    if not zip_path.exists():
+        print('ZIP not found:', zip_path)
+        return False
+    with zipfile.ZipFile(zip_path) as zipped:
+        for member in zipped.infolist():
+            if member.is_dir():
+                continue
+            path = PurePosixPath(member.filename.replace('\\', '/'))
+            if path.is_absolute() or '..' in path.parts:
+                raise ValueError('Unsafe archive member: ' + member.filename)
+            # Accept either a flat archive or one rooted at stage2_artifacts/.
+            parts = list(path.parts)
+            if parts and parts[0] == 'stage2_artifacts':
+                parts = parts[1:]
+            if not parts:
+                continue
+            target = ART.joinpath(*parts)
+            if not target.resolve().is_relative_to(ART.resolve()):
+                raise ValueError('Archive member escapes artifact directory')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zipped.open(member) as source, target.open('wb') as dest:
+                import shutil
+                shutil.copyfileobj(source, dest)
+    print('Restored ZIP into:', ART)
+    return True
+
+
+# A. If a backup ZIP is already in this runtime or in a mounted Drive, restore it.
+if not PRED_FILE.exists():
+    candidates = [Path('/content/stage2_artifacts.zip'), Path('stage2_artifacts.zip'),
+                  Path('/content/drive/MyDrive/stage2_artifacts.zip')]
+    for candidate in candidates:
+        if candidate.is_file():
+            restore_stage2_zip(candidate)
+            break
+
+# B. If the notebook's previous evaluation still exists as a DataFrame in RAM, save it.
+if not PRED_FILE.exists() and 'predictions' in globals():
+    previous = globals()['predictions']
+    if isinstance(previous, pd.DataFrame) and {'text','label','prediction'}.issubset(previous.columns):
+        previous.to_csv(PRED_FILE, index=False)
+        print('Recovered prediction CSV from the in-memory evaluation DataFrame.')
+
+# C. If checkpoint + preprocessed dev DataLoader remain, re-evaluate WITHOUT training.
+if not PRED_FILE.exists() and 'dev_loader' in globals() and 'dev_df' in globals() \
+        and 'predict_labels' in globals() and 'DEVICE' in globals():
+    best_dir = ART / 'best_inlegalbert'
+    if (best_dir / 'config.json').is_file():
+        from transformers import AutoModelForSequenceClassification
+        print('Found trained checkpoint: re-evaluating dev sentences, not retraining.')
+        checkpoint_model = AutoModelForSequenceClassification.from_pretrained(str(best_dir)).to(DEVICE)
+        gold_ids, predicted_ids = predict_labels(checkpoint_model, dev_loader)
+        pred_data = dev_df.copy()
+        pred_data['prediction'] = [ROLE_NAMES[int(i)] for i in predicted_ids]
+        pred_data['correct'] = [int(y) == int(p) for y,p in zip(gold_ids,predicted_ids)]
+        pred_data.to_csv(PRED_FILE,index=False)
+        del checkpoint_model
+        if str(DEVICE).startswith('cuda'):
+            import torch
+            torch.cuda.empty_cache()
+        print('Regenerated all', len(pred_data), 'validation predictions from the best checkpoint.')
+
+# D. Reports and confusion matrices need no model if predictions CSV exists.
+if PRED_FILE.is_file():
+    pred_data = pd.read_csv(PRED_FILE)
+    if not {'text','label','prediction'}.issubset(pred_data.columns):
+        raise ValueError('Prediction CSV does not include text, label and prediction columns.')
+    if not set(pred_data['label']).union(set(pred_data['prediction'])).issubset(set(ROLE_NAMES)):
+        raise ValueError('Unexpected labels in prediction CSV. Stop: do not mix datasets.')
+    if len(pred_data) != 2879:
+        print('WARNING: prediction count', len(pred_data), 'is not the recorded 2,879 dev sentences; verify source.')
+    if not REPORT_FILE.is_file():
+        report = classification_report(pred_data.label, pred_data.prediction, labels=ROLE_NAMES,
+                                       output_dict=True, zero_division=0)
+        pd.DataFrame(report).T.to_csv(REPORT_FILE)
+        print('Rebuilt class report from saved dev predictions.')
+    if not CONFUSION_FILE.is_file():
+        cm = confusion_matrix(pred_data.label, pred_data.prediction, labels=ROLE_NAMES)
+        pd.DataFrame(cm,index=ROLE_NAMES,columns=ROLE_NAMES).to_csv(CONFUSION_FILE)
+        print('Rebuilt confusion matrix from saved dev predictions.')
+
+missing = [p.name for p in [PRED_FILE,REPORT_FILE,CONFUSION_FILE] if not p.is_file()]
+if not missing:
+    print('READY! All 3 validation files are present. Run Stage 2.1 Error Analysis below.')
+else:
+    print('RECOVERY INCOMPLETE — missing:', missing)
+    print('If you saved stage2_artifacts.zip to your computer: run the OPTIONAL upload cell below,')
+    print('then rerun this recovery cell and Stage 2.1 Error Analysis.')
+    print('Without ZIP/checkpoint: choose Runtime -> Change runtime type -> T4 GPU; then Runtime -> Run all.')
+    print('RUN_FINAL_TEST must stay False.')
+
+
+# OPTIONAL. Keep False during Runtime -> Run all: no surprise upload prompt.
+UPLOAD_SAVED_ZIP = False
+if UPLOAD_SAVED_ZIP:
+    from google.colab import files
+    from pathlib import Path
+    uploaded = files.upload()
+    for name in uploaded:
+        if not name.lower().endswith('.zip'):
+            print('Skipped non-ZIP file:', name)
+            continue
+        restore_stage2_zip(Path(name))
+    print('Rerun Stage 2.1A Recovery, then Stage 2.1 Error Analysis.')
+else:
+    print('Optional old-ZIP upload skipped. This is expected if you are retraining.')
+
+
+# Stage 2.1 — Error analysis using ONLY validation predictions (no test-set evaluation).
+from pathlib import Path
+from IPython.display import display
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+ART = Path('/content/stage2_artifacts' if Path('/content').exists() else 'stage2_artifacts')
+PRED_FILE = ART / 'inlegalbert_dev_predictions.csv'
+REPORT_FILE = ART / 'inlegalbert_dev_class_report.csv'
+CONFUSION_FILE = ART / 'inlegalbert_dev_confusion.csv'
+
+required_files = [PRED_FILE, REPORT_FILE, CONFUSION_FILE]
+missing = [f.name for f in required_files if not f.is_file()]
+
+if missing:
+    print('ERROR ANALYSIS NOT RUN: these saved validation files are missing:', missing)
+    print('Run the Stage 2.1A RECOVERY cell above. If you have the saved ZIP,')
+    print('run the optional upload cell, rerun recovery, and then rerun error analysis.')
+    print('Without a ZIP or checkpoint, you must recreate dev predictions by training + evaluation.')
+    print('Do not enable RUN_FINAL_TEST for this analysis.')
+else:
+    dev_predictions = pd.read_csv(PRED_FILE)
+    class_report = pd.read_csv(REPORT_FILE, index_col=0)
+    confusion = pd.read_csv(CONFUSION_FILE, index_col=0)
+    roles = list(confusion.index)
+    assert confusion.columns.tolist() == roles, 'Confusion matrix row and column labels differ.'
+    assert {'text', 'label', 'prediction'}.issubset(dev_predictions.columns), 'Missing prediction CSV columns.'
+    assert set(roles).issubset(class_report.index), 'Class report missing one or more labels.'
+
+    # A. Worst-performing classes (F1 = balance of precision and recall).
+    per_class = class_report.loc[roles, ['precision','recall','f1-score','support']].copy()
+    per_class[['precision','recall','f1-score','support']] = per_class[
+        ['precision','recall','f1-score','support']].apply(pd.to_numeric, errors='coerce')
+    per_class = per_class.sort_values(['f1-score','support'], ascending=[True,True])
+    per_class.to_csv(ART / 'error_analysis_class_ranking.csv')
+    print('\n1) CLASS-WISE PERFORMANCE — LOWEST F1 FIRST')
+    display(per_class.round(3))
+
+    # B. Most common off-diagonal (wrong) predictions: actual -> predicted.
+    wrong_pairs = []
+    for actual in roles:
+        for predicted in roles:
+            if actual != predicted:
+                n = int(confusion.loc[actual, predicted])
+                if n > 0:
+                    wrong_pairs.append({'actual_role':actual, 'predicted_role':predicted,
+                                        'mistakes':n, 'actual_role_total':int(confusion.loc[actual].sum())})
+    mistakes = pd.DataFrame(wrong_pairs).sort_values('mistakes', ascending=False)
+    mistakes['percent_of_actual_role'] = (100 * mistakes['mistakes'] /
+                                          mistakes['actual_role_total']).round(1)
+    mistakes.to_csv(ART / 'error_analysis_confused_pairs.csv', index=False)
+    print('\n2) TOP 12 CONFUSED LABEL PAIRS (TRUE → PREDICTED)')
+    display(mistakes.head(12))
+
+    # C. Normalized confusion matrix — each row sums to 100% for a given true role.
+    cm = confusion.to_numpy(dtype=float)
+    totals = cm.sum(axis=1, keepdims=True)
+    percentages = np.divide(cm, totals, out=np.zeros_like(cm), where=totals != 0) * 100
+    fig, ax = plt.subplots(figsize=(13, 10))
+    im = ax.imshow(percentages, cmap='Blues', vmin=0, vmax=100)
+    ax.set_xticks(np.arange(len(roles)), labels=roles, rotation=55, ha='right')
+    ax.set_yticks(np.arange(len(roles)), labels=roles)
+    ax.set_xlabel('Predicted rhetorical role')
+    ax.set_ylabel('Actual (gold) rhetorical role')
+    ax.set_title('InLegalBERT: dev confusion matrix (% within each actual class)')
+    for i in range(len(roles)):
+        for j in range(len(roles)):
+            if cm[i,j] > 0:
+                ax.text(j, i, f'{percentages[i,j]:.0f}%', ha='center', va='center',
+                        fontsize=8, color='white' if percentages[i,j] >= 55 else 'black')
+    fig.colorbar(im, ax=ax, label='Percent of actual-role examples')
+    fig.tight_layout()
+    fig.savefig(ART / 'error_analysis_normalized_confusion.png', dpi=170, bbox_inches='tight')
+    plt.show()
+
+    # D. Real dev errors for the three largest confusion pairs; keep document context IDs.
+    bad = dev_predictions.loc[dev_predictions['label'] != dev_predictions['prediction']].copy()
+    bad['short_text'] = (bad['text'].fillna('').astype(str)
+                         .str.replace(r'\s+', ' ', regex=True).str.slice(0, 240))
+    example_frames = []
+    for _, pair in mistakes.head(3).iterrows():
+        group = bad.loc[(bad.label == pair.actual_role) &
+                        (bad.prediction == pair.predicted_role)].head(4)
+        example_frames.append(group)
+    selected_examples = pd.concat(example_frames, ignore_index=True) if example_frames else bad.head(0)
+    example_cols = [c for c in ['doc_index','sentence_index','label','prediction','short_text']
+                    if c in selected_examples.columns]
+    selected_examples[example_cols].to_csv(ART / 'error_analysis_examples.csv', index=False)
+    print('\n3) REAL MISCLASSIFIED VALIDATION SENTENCES (up to four per top three pairs)')
+    display(selected_examples[example_cols])
+
+    # E. Simple overview and interpretation notes.
+    correct_count = int((dev_predictions['label'] == dev_predictions['prediction']).sum())
+    print(f'\n4) OVERVIEW: {correct_count}/{len(dev_predictions)} dev sentences correctly classified')
+    print(f'   Misclassified dev sentences: {len(bad)}')
+    print('   Lowest-F1 labels:', ', '.join(per_class.head(3).index.tolist()))
+    print('   Biggest confusion:', f"{mistakes.iloc[0].actual_role} → {mistakes.iloc[0].predicted_role}")
+    print('Interpret errors with care: one development judgment has conflicting human annotations.')
+    print('Saved three CSV reports + one chart to:', ART)
+    print('Rerun the ZIP-export cell below to include the new error-analysis files.')
+
+from shutil import make_archive
+archive = make_archive(str(OUTPUT), 'zip', root_dir=OUTPUT)
+print('Artifacts ZIP:',archive)
+if Path('/content').exists():
+    print('In Colab you can download it with:')
+    print('from google.colab import files; files.download(archive)')
+
+from google.colab import files
+
+files.download(archive)
+
+# OPTIONAL. Turn True and run this cell alone AFTER export to save ZIP to MyDrive.
+BACKUP_TO_MYDRIVE = False
+if BACKUP_TO_MYDRIVE:
+    from google.colab import drive
+    from pathlib import Path
+    from datetime import datetime
+    import shutil
+    if 'archive' not in globals() or not Path(archive).is_file():
+        print('Run the ZIP export cell above first.')
+    else:
+        drive.mount('/content/drive')
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        destination = Path('/content/drive/MyDrive') / f'stage2_artifacts_{stamp}.zip'
+        shutil.copy2(archive, destination)
+        print('Persistent backup saved:', destination)
+else:
+    print('Optional Drive backup skipped. To save permanently, change BACKUP_TO_MYDRIVE to True and run this cell.')

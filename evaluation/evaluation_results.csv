@@ -1,0 +1,7 @@
+method,rouge1_f1,rouge2_f1,rougeL_f1,mean_words,cases,split,protocol
+L120_Lead,0.4127773161617912,0.1848712928313136,0.20675129435979855,372.6,100,official_test,Stage3.6_120_candidates_400_words_recorded
+L120_TFIDF,0.49682000740411164,0.27615421625624675,0.28044803960469455,398.28,100,official_test,Stage3.6_120_candidates_400_words_recorded
+L120_greedy_rouge_no_roles,0.5148399892368625,0.309219490429959,0.3054731408371549,398.0,100,official_test,Stage3.6_120_candidates_400_words_recorded
+L120_greedy_rouge_roles,0.5188297034396008,0.3168445803365837,0.30964439643106656,398.07,100,official_test,Stage3.6_120_candidates_400_words_recorded
+L120_tfidf_budgeted_no_roles,0.520152803854721,0.31770913134926143,0.3073340312350696,398.4,100,official_test,Stage3.6_120_candidates_400_words_recorded
+L120_tfidf_budgeted_roles,0.5197791065233234,0.3160783712854841,0.30581335621341904,398.62,100,official_test,Stage3.6_120_candidates_400_words_recorded

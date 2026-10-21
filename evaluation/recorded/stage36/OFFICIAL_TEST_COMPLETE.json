@@ -1,0 +1,25 @@
+{
+  "stage": "3.6",
+  "test_cases": 100,
+  "methods": [
+    "L120_Lead",
+    "L120_TFIDF",
+    "L120_tfidf_budgeted_no_roles",
+    "L120_tfidf_budgeted_roles",
+    "L120_greedy_rouge_no_roles",
+    "L120_greedy_rouge_roles"
+  ],
+  "frozen_protocol_id": "b813646a805272bec837b768fc72a845ee6b3166aba199bc01d7f8389c90b0b7",
+  "test_references_only_used_for_final_rouge": true,
+  "checkpoint_hashes": {
+    "L120_tfidf_budgeted_no_roles": "ad0ce7d56d243432a18e6558b6523fe7625e5a665142ad5892841471606624dd",
+    "L120_tfidf_budgeted_roles": "b7013f88d6e5c69d6bb74ce30bea64acf34dbe4b58fdc3e6dd11668c7290108c",
+    "L120_greedy_rouge_no_roles": "f67751cc55b9264a3e43547fa1b298255cd9a3c879b9d63fd225f6e410d6e810",
+    "L120_greedy_rouge_roles": "34b6c72a5ecdd7eecc941bdc2b496e30de6088ef4e3cdd8c4d2b6041847deb4b"
+  },
+  "train_case_count": 1000,
+  "dev_case_count": 40,
+  "official_test_evaluations_permitted": 1,
+  "test_evaluation_not_used_for_model_selection": true,
+  "timestamp_utc": "2026-10-16T22:12:12.352182+00:00"
+}

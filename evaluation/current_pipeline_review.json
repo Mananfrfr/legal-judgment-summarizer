@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-20",
+  "pipeline_hashes_match_freeze": true,
+  "review_method": "Assistant comparison of machine summaries with source final pages; NOT independent human/legal annotation. Qualitative findings recorded after inference. No model or summary-rule changes made on these outputs.",
+  "human_accuracy_measured": false,
+  "training_overlap_known": false,
+  "runtime_failures": 0,
+  "critical_decision_failures_observed": 2,
+  "documents": [
+    {
+      "file": "129_2025_4_1501_74249_Judgement_15-Sep-2026.pdf",
+      "sha256": "3f49a31464fec174cdbff5d9e194fa888ca00529b6246eacdc8ac2368eab4653",
+      "pages": 93,
+      "scored": 565,
+      "extracted_sentences": 565,
+      "exact_evidence": true,
+      "missing_sections": [
+        "decision"
+      ],
+      "flags": [
+        "MISSING_SECTION",
+        "POSSIBLE_OMITTED_DIRECTIONS"
+      ],
+      "critical_decision_failure": true,
+      "source_pages": [
+        92,
+        93
+      ],
+      "finding": "Decision section abstains despite dismissal and operative qualifications on page 93. Much of paragraph 39 appears under reasoning. No-costs disposition is absent. Explicit missing-decision warning is correct; the brief is still incomplete."
+    },
+    {
+      "file": "37437_2026_6_1501_74756_Judgement_29-Sep-2026.pdf",
+      "sha256": "5741a40a9d0a1bc6e980fc0c9910282985942a2ccdf5a45a41279965dc3466df",
+      "pages": 41,
+      "scored": 448,
+      "extracted_sentences": 448,
+      "exact_evidence": true,
+      "missing_sections": [],
+      "flags": [
+        "POSSIBLE_OMITTED_DIRECTIONS"
+      ],
+      "critical_decision_failure": true,
+      "source_pages": [
+        5,
+        6,
+        40,
+        41
+      ],
+      "finding": "Decision section contains the earlier High Court dismissal and appellant submissions from pages 5\u20136. Current relief at paragraph 67/page 40 is omitted: orders set aside, release subject to custody in another case, appeal allowed. Costs of Rs.10 lakh within one month appear only among omission candidates. The issue extract is a vague reference rather than a useful question. The automatic flags do not specifically detect the wrong-court decision."
+    },
+    {
+      "file": "38471_2025_14_1502_75449_Judgement_16-Oct-2026.pdf",
+      "sha256": "4e871a8ec1a362944ad03f60b4f447c3778cd59fa2526fe48f4227d76c4a9d47",
+      "pages": 17,
+      "scored": 91,
+      "extracted_sentences": 91,
+      "exact_evidence": true,
+      "missing_sections": [],
+      "flags": [
+        "POSSIBLE_OMITTED_DIRECTIONS",
+        "ISSUE_CONTEXT_ONLY",
+        "ENCODER_TRUNCATION_REVIEW"
+      ],
+      "critical_decision_failure": false,
+      "source_pages": [
+        16,
+        17
+      ],
+      "finding": "Dismissal and disposal of pending applications match the final page. Issue section is only procedural context and is flagged. Reasoning covers Section 17A but omits the separate Section 19 sanction analysis on page 16. This is not a complete or independently validated brief."
+    }
+  ]
+}

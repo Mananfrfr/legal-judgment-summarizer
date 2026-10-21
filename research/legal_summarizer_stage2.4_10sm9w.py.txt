@@ -1,0 +1,887 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Pin stable, mutually compatible packages. Do not change PyTorch / numpy unnecessarily.
+# Notebook-only setup: %pip -q install "transformers==4.57.6" "huggingface-hub==0.36.2" "pyarrow>=16" "scikit-learn>=1.4" "pandas>=2" tqdm
+# Colab can retain files from two Hugging Face Hub versions after a pip upgrade.
+# Clean-reinstall just the Hub package so _commit_api.py and errors.py match.
+# Notebook-only setup: %pip -q install --force-reinstall --no-deps "huggingface-hub==0.36.2"
+
+
+# Fail immediately if Colab kept an incompatible Hugging Face Hub in memory.
+# The official huggingface-hub 0.36.2 exports these errors, and Transformers 4.57.6
+# supports it. Rebooting the runtime clears modules from the previous installation.
+from importlib.metadata import version
+import sys
+
+try:
+    assert version('huggingface-hub') == '0.36.2', version('huggingface-hub')
+    assert version('transformers') == '4.57.6', version('transformers')
+    from huggingface_hub.errors import XetAuthorizationError, XetRefreshTokenError
+    from huggingface_hub._commit_api import CommitOperation
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+except Exception as hf_error:
+    raise RuntimeError(
+        'Hugging Face installation is still mixed inside the active Colab process. '
+        'Go to Runtime → Restart session, then Runtime → Run all (do NOT just rerun this cell). '
+        'Our saved model and dataset are not the problem. '
+        f'Original import error: {type(hf_error).__name__}: {hf_error}'
+    ) from hf_error
+
+print('Hugging Face import OK:',
+      'transformers', version('transformers'),
+      '| huggingface-hub', version('huggingface-hub'))
+
+
+import os, json, math, random, hashlib, shutil, warnings
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import torch
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+from IPython.display import display
+from tqdm.auto import tqdm
+import pyarrow.parquet as pq
+import matplotlib.pyplot as plt
+
+DEVICE=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if DEVICE.type=='cpu':
+    torch.set_num_threads(min(4,os.cpu_count() or 2))
+    print('Using CPU. BiLSTM heads are practical; missing BERT embeddings will be VERY slow to recover on CPU.')
+else:
+    print('Using GPU:',torch.cuda.get_device_name(0))
+
+SEED=42
+RUN_FINAL_TEST=False  # Kept OFF. The official test split is never evaluated here.
+FORCE_RETRAIN=False
+CFG=dict(hidden_size=128,dropout=0.30,doc_batch_size=4,
+         epochs=25,patience=5,lr=1e-3,weight_decay=0.01,max_grad_norm=1.0,
+         focal_gamma=2.0,class_weight_beta=0.999,max_raw_weight=4.0)
+
+# Optional: set to a specific mounted folder if the saved Stage 2.3 artifacts
+# are reached through a My Drive shortcut rather than this default location.
+STAGE23_FOLDER_OVERRIDE=None
+# If Stage 2.3 embeddings are absent, recover them once with the SAME fine-tuned
+# context-aware Stage 2.2 encoder. T4 GPU recommended for this one-time step.
+AUTO_REBUILD_MISSING_EMBEDDINGS=True
+STAGE22_FOLDER_OVERRIDE=None  # optional full path to the shared Stage 2.2 artifacts
+
+# EXACT Stage 2.3 encoder/cache and data fingerprints from saved research report.
+EXPECTED_ENCODER_SIGNATURE='83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615'
+EXPECTED_TRAIN_DIGEST='d94560fff3f3dd1c55be28041d43542e04e2a4cbb7f0a26cdc897d7d130a8d5b'
+EXPECTED_DEV_DIGEST='803ab8ae6b2c5aa3892ecf743ccc43a1c6f8b887a0bc66268eaf02c588ffcecc'
+REFERENCE_STAGE23=dict(accuracy=0.8311913858978812,
+                      macro_f1=0.6540553641463259,weighted_f1=0.8236828839054482)
+REFERENCE_STAGE23_CRF=dict(accuracy=0.8311913858978812,
+                          macro_f1=0.6515637946096906,weighted_f1=0.8238851524085384)
+
+LABELS=['ANALYSIS','ARG_PETITIONER','ARG_RESPONDENT','FAC','ISSUE','NONE','PREAMBLE',
+        'PRE_NOT_RELIED','PRE_RELIED','RATIO','RLC','RPC','STA']
+LABEL2ID={name:i for i,name in enumerate(LABELS)}
+ID2LABEL={i:name for name,i in LABEL2ID.items()}
+
+def set_seed(seed):
+    random.seed(seed);np.random.seed(seed);torch.manual_seed(seed)
+    if torch.cuda.is_available():torch.cuda.manual_seed_all(seed)
+set_seed(SEED)
+
+from google.colab import drive
+drive.mount('/content/drive')
+DRIVE=Path('/content/drive/MyDrive')
+if not DRIVE.is_dir():
+    DRIVE=Path('/content/drive/My Drive')
+assert DRIVE.is_dir(), 'Google Drive must be mounted to load saved Stage 2.3 embeddings.'
+OUTPUT=DRIVE/'legal_summarizer_stage2_4_artifacts'
+OUTPUT.mkdir(parents=True,exist_ok=True)
+print('Stage 2.4 artifacts:', OUTPUT)
+print('Final test disabled:', not RUN_FINAL_TEST)
+
+# Dataset access: check HF_TOKEN or use locally uploaded official JSON files.
+# Invalid or missing credentials never cause cascading IPython/SystemExit tracebacks.
+from huggingface_hub import hf_hub_download, HfApi
+
+REPO = 'opennyaiorg/InRhetoricalRoles'
+DATASET_URL = f'https://huggingface.co/datasets/{REPO}'
+DATA_DIR = Path('/content') if Path('/content').exists() else Path.cwd()
+SPLITS = ('train', 'dev', 'test')
+raw, split_files = {}, {}
+DATASET_READY = False
+DATASET_STATUS = 'Not loaded'
+
+class DatasetSetupNeeded(Exception):
+    """Missing authentication or access permission; display without traceback."""
+
+def _load_splits():
+    paths = {split: DATA_DIR / f'{split}.json' for split in SPLITS}
+    if all(path.is_file() for path in paths.values()):
+        loaded = {}
+        print(f'Loading locally provided JSON dataset from {DATA_DIR}')
+        for split, file in paths.items():
+            with file.open(encoding='utf-8') as handle:
+                loaded[split] = json.load(handle)
+            if not isinstance(loaded[split], list):
+                raise ValueError(f'{file.name}: expected a list of annotated documents')
+            print(f'{split}: {len(loaded[split])} documents')
+        return loaded, {split: [str(path)] for split, path in paths.items()}, 'local JSON'
+
+    token = None
+    secret_problem = None
+    try:
+        from google.colab import userdata
+        token = userdata.get('HF_TOKEN')
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except Exception as exc:
+        secret_problem = type(exc).__name__
+    token = (token or os.environ.get('HF_TOKEN') or '').strip()
+
+    if not token:
+        missing = ', '.join(p.name for p in paths.values() if not p.exists())
+        detail = f'Colab secret issue: {secret_problem}.\n' if secret_problem else ''
+        raise DatasetSetupNeeded(
+            'HF_TOKEN is missing.\n' + detail +
+            'Create a Hugging Face Read token at https://huggingface.co/settings/tokens.\n'
+            'Add/update HF_TOKEN in Colab > Secrets (key icon) and enable notebook access.\n'
+            f'Accept access to {DATASET_URL} with that account.\n'
+            f'Or upload all three official JSON files to {DATA_DIR}: train.json, dev.json, test.json. '
+            f'(Currently missing: {missing})'
+        )
+    if not token.startswith('hf_'):
+        raise DatasetSetupNeeded(
+            'HF_TOKEN does not look like a Hugging Face access token (normally starts with hf_).\n'
+            'Copy ONLY the token value, without quotes, from https://huggingface.co/settings/tokens.\n'
+            'Replace HF_TOKEN in Colab Secrets, enable notebook access, and rerun.'
+        )
+
+    api = HfApi(token=token)
+    try:
+        account = api.whoami(token=token).get('name', '(unknown)')
+        print('Hugging Face authentication successful. Account:', account)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        raise DatasetSetupNeeded(
+            f'Hugging Face rejected HF_TOKEN (HTTP {status or "authentication failure"}).\n'
+            'This is not a bug in the ML model. The token stored in Colab Secrets '
+            'is invalid, revoked, expired, or copied incorrectly.\n'
+            '1. Create a NEW Read token at https://huggingface.co/settings/tokens.\n'
+            '2. In Colab > Secrets, replace HF_TOKEN with that token and enable notebook access.\n'
+            '3. Restart the runtime and use Runtime > Run all.\n'
+            'Do not paste your token into a notebook cell or share it.'
+        ) from None
+
+    try:
+        revision = api.dataset_info(repo_id=REPO, token=token).sha
+        names = api.list_repo_files(repo_id=REPO, repo_type='dataset',
+                                    revision=revision, token=token)
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        if status in (401, 403):
+            raise DatasetSetupNeeded(
+                f'Token works, but access to {DATASET_URL} was denied (HTTP {status}).\n'
+                f'Sign in as {account}, request/accept access to the dataset, '
+                'then rerun the notebook. A fine-grained token also needs access to this repo.'
+            ) from None
+        raise RuntimeError(f'Unable to list dataset files: {type(exc).__name__}') from exc
+
+    files = {split: sorted(f for f in names if f.startswith(f'data/{split}-')
+                           and f.endswith('.parquet')) for split in SPLITS}
+    if not all(files.values()):
+        raise ValueError('Dataset structure changed: expected data/train-, data/dev- '
+                         'and data/test- Parquet shards. Available files: ' + str(names))
+
+    loaded = {}
+    for split, filenames in files.items():
+        records = []
+        for filename in filenames:
+            try:
+                file_path = hf_hub_download(repo_id=REPO, filename=filename,
+                                            repo_type='dataset', revision=revision, token=token)
+            except Exception as exc:
+                status = getattr(getattr(exc, 'response', None), 'status_code', None)
+                if status in (401, 403) or 'GatedRepoError' in type(exc).__name__:
+                    raise DatasetSetupNeeded(
+                        f'Token authenticated as {account}, but download access is denied '
+                        f'(HTTP {status or "401/403"}) for {filename}.\n'
+                        f'Visit {DATASET_URL} with the same account and accept/request access.\n'
+                        'If using a fine-grained token, enable read access to this gated dataset.'
+                    ) from None
+                raise RuntimeError(f'Failed to download {filename}: {type(exc).__name__}') from exc
+            records.extend(pq.read_table(file_path).to_pylist())
+        loaded[split] = records
+        print(f'{split}: {len(records)} documents from {len(filenames)} file(s)')
+    return loaded, files, revision
+
+try:
+    raw, split_files, revision = _load_splits()
+except DatasetSetupNeeded as exc:
+    DATASET_STATUS = str(exc)
+    print('DATASET SETUP NEEDED — training was skipped safely.\n')
+    print(DATASET_STATUS)
+else:
+    DATASET_READY = True
+    DATASET_STATUS = 'Loaded successfully'
+    (OUTPUT / 'dataset.json').write_text(json.dumps(
+        dict(repo=REPO, revision=revision, files=split_files), indent=2))
+    print('Dataset loaded successfully! Continue to the next cells.')
+
+if not globals().get('DATASET_READY', False):
+    print('Skipped: dataset is not loaded. Follow the setup message in the dataset cell.')
+else:
+    LABELS = ['ANALYSIS', 'ARG_PETITIONER', 'ARG_RESPONDENT', 'FAC', 'ISSUE', 'NONE',
+              'PREAMBLE', 'PRE_NOT_RELIED', 'PRE_RELIED', 'RATIO', 'RLC', 'RPC', 'STA']
+    LABEL2ID = {label: i for i, label in enumerate(LABELS)}
+    ID2LABEL = {i: label for label, i in LABEL2ID.items()}
+
+    def json_to_df(documents, split):
+        rows, skipped, multiple_sets = [], [], []
+        for doc_index, doc in enumerate(documents):
+            annotations = doc.get('annotations') or []
+            # A document may contain labels from several annotators. Never merge their
+            # results: this would duplicate offsets and may invent contradictory labels.
+            candidates = []
+            for annotation_index, annotation in enumerate(annotations):
+                if not isinstance(annotation, dict):
+                    continue
+                results = annotation.get('result') or []
+                spans_here = [r['value'] for r in results if isinstance(r, dict)
+                              and isinstance(r.get('value'), dict)
+                              and 'text' in r['value']]
+                if spans_here:
+                    candidates.append((annotation_index, spans_here, annotation))
+
+            if not candidates:
+                skipped.append(doc_index)
+                continue
+
+            # Prefer an explicitly adjudicated/ground-truth annotation, if supplied.
+            # The Hugging Face Parquet schema often contains only 'result' and lacks
+            # adjudication metadata; in that case, use a documented deterministic policy.
+            adjudicated = [item for item in candidates if
+                           item[2].get('ground_truth') is True or
+                           item[2].get('is_adjudicated') is True]
+            if len(adjudicated) > 1:
+                raise ValueError(f'{split} document {doc_index}: more than one annotation '
+                                 'is marked adjudicated; review the source data.')
+            selected_idx, spans, _ = (adjudicated[0] if adjudicated else candidates[0])
+            selection_reason = 'adjudicated' if adjudicated else 'first_nonempty'
+
+            if len(annotations) > 1:
+                # Compare the entire labeled sentence sequence across nonempty sets.
+                # Keep only counts/indices in audit, never duplicate the document text.
+                def signature(annotator_spans):
+                    records = [(v.get('start'), v.get('end'), v.get('text'),
+                                tuple(v.get('labels') or ())) for v in annotator_spans]
+                    return tuple(sorted(records, key=lambda x: (str(x[0]), str(x[1]), str(x[2]))))
+                disagree = len({signature(item[1]) for item in candidates}) > 1
+                multiple_sets.append(dict(doc_index=doc_index,
+                                          total_annotation_sets=len(annotations),
+                                          nonempty_annotation_sets=len(candidates),
+                                          selected_annotation_index=selected_idx,
+                                          selection_reason=selection_reason,
+                                          annotation_sets_disagree=disagree))
+            for value in spans:
+                if not isinstance(value.get('start'), int) or not isinstance(value.get('end'), int):
+                    raise ValueError(f'{split} document {doc_index}: missing sentence offsets')
+                if value['end'] <= value['start'] or not value['text'].strip():
+                    raise ValueError(f'{split} document {doc_index}: invalid or empty span')
+                labels = value.get('labels') or []
+                if len(labels) > 1:
+                    raise ValueError('Expected one rhetorical role per sentence')
+                label = labels[0] if labels else None
+                if label is not None and label not in LABEL2ID:
+                    raise ValueError(f'Unknown label: {label}')
+                rows.append(dict(split=split, doc_index=doc_index, annotation_index=selected_idx, meta=doc.get('meta'),
+                                 start=value['start'], end=value['end'], text=value['text'], label=label))
+        df = pd.DataFrame(rows, columns=['split','doc_index','annotation_index','meta','start','end','text','label'])
+        df = df.sort_values(['doc_index', 'start', 'end']).reset_index(drop=True)
+        if df.duplicated(['doc_index', 'start', 'end']).any():
+            raise ValueError(f'{split}: duplicate sentence spans')
+        df['sentence_index'] = df.groupby('doc_index').cumcount()
+        report = dict(raw_documents=len(documents), represented_documents=int(df.doc_index.nunique()),
+                      sentences=len(df), skipped_document_indices=skipped,
+                      unlabeled=int(df.label.isna().sum()),
+                      multi_annotation_documents=len(multiple_sets),
+                      multi_annotation_disagreements=sum(x['annotation_sets_disagree'] for x in multiple_sets),
+                      annotation_selection_policy='adjudicated_if_marked_else_first_nonempty',
+                      multi_annotation_details=multiple_sets)
+        return df, report
+
+    frames, audit = {}, {}
+    for split in raw:
+        frames[split], audit[split] = json_to_df(raw[split], split)
+    for split in ['train', 'dev']:
+        if frames[split].empty or frames[split].label.isna().any():
+            raise ValueError(f'{split}: requires nonempty fully labeled data')
+
+    def document_hashes(df):
+        return {hashlib.sha256(' '.join(' '.join(g.text).split()).encode()).hexdigest()
+                for _, g in df.groupby('doc_index')}
+
+    for a, b in [('train','dev'), ('train','test'), ('dev','test')]:
+        overlap = document_hashes(frames[a]) & document_hashes(frames[b])
+        audit[f'{a}_{b}_duplicate_documents'] = len(overlap)
+        if overlap:
+            raise ValueError(f'{a}/{b}: {len(overlap)} identical documents; resolve split leakage first')
+        audit[f'{a}_{b}_shared_sentence_texts'] = len(set(frames[a].text) & set(frames[b].text))
+    (OUTPUT / 'data_audit.json').write_text(json.dumps(audit, indent=2))
+    # Full document-level provenance, including all multi-annotator choices, is in this JSON.
+    print('Full data audit:', OUTPUT / 'data_audit.json')
+    for split in ['train', 'dev', 'test']:
+        info = audit[split]
+        print(f'{split}: {info["sentences"]} sentences; '
+              f'{info["multi_annotation_documents"]} documents with multiple annotation sets '
+              f'({info["multi_annotation_disagreements"]} with different annotations); '
+              f'{info["unlabeled"]} unlabeled sentences')
+    if any(audit[s]['multi_annotation_disagreements'] for s in ['train','dev','test']):
+        print('NOTICE: Some annotation sets disagree. In absence of an adjudication marker, '
+              'the first nonempty set was selected. Results reflect that policy, not verified adjudicated gold labels.')
+    train_df, dev_df, test_df = (frames[s] for s in ['train','dev','test'])
+    print(train_df.label.value_counts())
+if not globals().get('DATASET_READY', False):
+    raise RuntimeError('Dataset unavailable. Please fix HF_TOKEN / dataset permissions above, then Runtime → Run all.')
+assert len(train_df)>0 and len(dev_df)>0
+
+# One-time recovery: encode sentences with precisely the trained Stage 2.2 context model.
+from contextlib import nullcontext
+from zipfile import ZipFile, ZIP_DEFLATED
+
+STAGE23=Path(STAGE23_FOLDER_OVERRIDE) if STAGE23_FOLDER_OVERRIDE else DRIVE/'legal_summarizer_stage2_3_artifacts'
+FEATURE_DIR=STAGE23/'embeddings_cache'
+FEATURE_NAMES=['train_context_CLS.pt','dev_context_CLS.pt']
+need_rebuild=not all((FEATURE_DIR/name).is_file() for name in FEATURE_NAMES)
+CACHE_WAS_REBUILT=False
+
+if not need_rebuild:
+    print('Both cached Stage 2.3 embedding files exist:',FEATURE_DIR)
+else:
+    if not AUTO_REBUILD_MISSING_EMBEDDINGS:
+        raise RuntimeError('Stage 2.3 embedding files are missing; enable AUTO_REBUILD_MISSING_EMBEDDINGS.')
+    print('Missing Stage 2.3 embedding cache; recovering from the saved fine-tuned Stage 2.2 context checkpoint.')
+    if DEVICE.type=='cpu':
+        print('WARNING: No GPU is enabled. This can be very slow. For best speed choose T4 GPU and rerun.')
+
+    # Reuse the EXACT document order/annotations from the original Stage 2.3 run.
+    def recovery_frame_digest(frame):
+        h=hashlib.sha256()
+        for doc,start,end,sentence,label in frame[['doc_index','start','end','text','label']].itertuples(index=False,name=None):
+            h.update(json.dumps([int(doc),int(start),int(end),str(sentence),str(label)],
+                                ensure_ascii=False).encode('utf-8'))
+            h.update(b'\n')
+        return h.hexdigest()
+
+    assert recovery_frame_digest(train_df)==EXPECTED_TRAIN_DIGEST, 'Train split differs from Stage 2.3. Stopping.'
+    assert recovery_frame_digest(dev_df)==EXPECTED_DEV_DIGEST, 'Dev split differs from Stage 2.3. Stopping.'
+
+    # Both ordinary MyDrive folders and mounted shared-folder shortcuts are supported.
+    STAGE22_FOLDER_ID='1_scAoDepjECZBTPYSWTe-xntTU68HYXj'
+    stage22_candidates=[]
+    if STAGE22_FOLDER_OVERRIDE: stage22_candidates.append(Path(STAGE22_FOLDER_OVERRIDE))
+    stage22_candidates.append(DRIVE/'legal_summarizer_stage2_2_artifacts')
+    for special in ('.shortcut-targets-by-id','.shortcut-targets-byid'):
+        stage22_candidates.extend([
+            Path('/content/drive')/special/STAGE22_FOLDER_ID/'legal_summarizer_stage2_2_artifacts',
+            Path('/content/drive')/special/STAGE22_FOLDER_ID,
+        ])
+    required_checkpoint=['model.safetensors','config.json','tokenizer.json',
+                         'tokenizer_config.json','special_tokens_map.json','vocab.txt']
+    CHECKPOINT_DIR=next((root/'context256'/'best_checkpoint' for root in stage22_candidates
+                         if all((root/'context256'/'best_checkpoint'/f).is_file()
+                                for f in required_checkpoint)),None)
+    if CHECKPOINT_DIR is None:
+        raise FileNotFoundError(
+            'Fine-tuned Stage 2.2 context256/best_checkpoint is not accessible. '
+            'In the current Google account, add a My Drive shortcut to the shared '
+            'Stage 2.2 artifacts folder (https://drive.google.com/drive/folders/'
+            '1_scAoDepjECZBTPYSWTe-xntTU68HYXj) or set STAGE22_FOLDER_OVERRIDE '
+            'to its full mounted path; then rerun. Do not use generic InLegalBERT.')
+
+    def recovery_checkpoint_signature(path):
+        h=hashlib.sha256()
+        for name in ('config.json','tokenizer.json','model.safetensors'):
+            p=path/name
+            if not p.is_file(): raise FileNotFoundError(p)
+            h.update(name.encode());h.update(str(p.stat().st_size).encode())
+            with p.open('rb') as f:
+                h.update(f.read(128*1024))
+                if p.stat().st_size>128*1024:
+                    f.seek(-128*1024,2);h.update(f.read(128*1024))
+        return h.hexdigest()
+
+    encoder_signature=recovery_checkpoint_signature(CHECKPOINT_DIR)
+    assert encoder_signature==EXPECTED_ENCODER_SIGNATURE, (
+        'This checkpoint is NOT identical to the original Stage 2.3 fine-tuned encoder. '
+        'Stopping to protect reproducibility.')
+    print('Verified identical fine-tuned checkpoint:',CHECKPOINT_DIR)
+
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+    TOKENIZER=AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR),use_fast=True,local_files_only=True)
+    assert TOKENIZER.cls_token_id is not None and TOKENIZER.sep_token_id is not None
+    MARK_PREV=TOKENIZER.encode('PREVIOUS:',add_special_tokens=False)
+    MARK_NEXT=TOKENIZER.encode('NEXT:',add_special_tokens=False)
+
+    def make_neighbor_indices(frame):
+        if frame.empty: return [],[]
+        keys=frame[['doc_index','sentence_index']].reset_index(drop=True)
+        assert keys.equals(keys.sort_values(['doc_index','sentence_index']).reset_index(drop=True))
+        n=len(frame)
+        prev=[i-1 if i>0 and keys.at[i-1,'doc_index']==keys.at[i,'doc_index'] else None for i in range(n)]
+        nex=[i+1 if i+1<n and keys.at[i+1,'doc_index']==keys.at[i,'doc_index'] else None for i in range(n)]
+        return prev,nex
+
+    def pack_context_ids(target_ids,previous_ids,next_ids,max_length=256,target_cap=192):
+        # Exact Stage 2.3 implementation. Target first segment; previous/next second segment.
+        assert max_length>=8 and target_cap>=1
+        tgt=list(target_ids[:min(target_cap,max_length-3)])
+        budget=max_length-len(tgt)-3
+        pmark=MARK_PREV if previous_ids else []
+        nmark=MARK_NEXT if next_ids else []
+        if len(pmark)+len(nmark)>budget: raise ValueError('Insufficient budget for neighbor markers')
+        free=budget-len(pmark)-len(nmark)
+        prev_cap=min(len(previous_ids),(free+1)//2) if previous_ids else 0
+        next_cap=min(len(next_ids),free//2) if next_ids else 0
+        leftover=free-prev_cap-next_cap
+        prev_cap+=min(len(previous_ids)-prev_cap,leftover)
+        leftover=free-prev_cap-next_cap
+        next_cap+=min(len(next_ids)-next_cap,leftover)
+        prev_part=list(previous_ids[-prev_cap:]) if prev_cap else []
+        next_part=list(next_ids[:next_cap]) if next_cap else []
+        context=pmark+prev_part+nmark+next_part
+        ids=[TOKENIZER.cls_token_id]+tgt+[TOKENIZER.sep_token_id]+context+[TOKENIZER.sep_token_id]
+        segment0=len(tgt)+2
+        result={'input_ids':ids,'attention_mask':[1]*len(ids),
+                'token_type_ids':[0]*segment0+[1]*(len(ids)-segment0)}
+        assert len(ids)<=max_length
+        assert ids[1:1+len(tgt)]==tgt
+        return result
+
+    class RecoveryRoleDataset(Dataset):
+        def __init__(self,frame):
+            texts=frame.text.astype(str).tolist()
+            raw=TOKENIZER(texts,add_special_tokens=False,padding=False,
+                          return_attention_mask=False)['input_ids']
+            previous,following=make_neighbor_indices(frame)
+            self.rows=[pack_context_ids(raw[i],
+                        raw[previous[i]] if previous[i] is not None else [],
+                        raw[following[i]] if following[i] is not None else [],
+                        max_length=256,target_cap=192)
+                       for i in range(len(texts))]
+            self.labels=[LABEL2ID[x] for x in frame.label.tolist()]
+        def __len__(self):return len(self.labels)
+        def __getitem__(self,i):return {**self.rows[i],'labels':self.labels[i]}
+
+    # Check context never crosses document boundaries.
+    p,n=make_neighbor_indices(pd.DataFrame({'doc_index':[0,0,1,1,1],
+                                             'sentence_index':[0,1,0,1,2]}))
+    assert p==[None,0,None,2,3] and n==[1,None,3,4,None]
+
+    FEATURE_DIR.mkdir(parents=True,exist_ok=True)
+    encoder=AutoModelForSequenceClassification.from_pretrained(
+        str(CHECKPOINT_DIR),local_files_only=True).to(DEVICE).eval()
+    assert encoder.config.num_labels==13
+    assert [encoder.config.id2label[i] for i in range(13)]==LABELS
+    for parameter in encoder.parameters():parameter.requires_grad_(False)
+    collator=DataCollatorWithPadding(tokenizer=TOKENIZER,return_tensors='pt')
+    recovery_success=False
+    try:
+        for split,frame in [('train',train_df),('dev',dev_df)]:
+            cache_path=FEATURE_DIR/f'{split}_context_CLS.pt'
+            if cache_path.is_file():
+                try:
+                    cached=torch.load(cache_path,map_location='cpu',weights_only=True)
+                    good=(cached.get('checkpoint_signature')==encoder_signature
+                          and cached.get('data_digest')==recovery_frame_digest(frame)
+                          and cached.get('max_length')==256
+                          and cached.get('max_target_context')==192
+                          and tuple(cached['features'].shape)==(len(frame),768)
+                          and torch.equal(cached['labels'],torch.tensor(
+                              [LABEL2ID[x] for x in frame.label],dtype=torch.long)))
+                except Exception:
+                    good=False
+                if good:
+                    print('Reusing verified existing',split,'cache:',cache_path)
+                    continue
+                print('Existing',split,'cache failed verification; rebuilding it.')
+            print('Building exact context tokens for',split)
+            dataset=RecoveryRoleDataset(frame)
+            assert len(dataset)==len(frame)
+            assert max(map(lambda x:len(x['input_ids']),dataset.rows))<=256
+            loader=DataLoader(dataset,batch_size=16,shuffle=False,
+                              collate_fn=collator,num_workers=0)
+            vectors=[]
+            with torch.inference_mode():
+                for batch in tqdm(loader,desc='Recover frozen InLegalBERT '+split):
+                    features_in={k:v.to(DEVICE) for k,v in batch.items() if k!='labels'}
+                    autocast_context=torch.amp.autocast('cuda') if DEVICE.type=='cuda' else nullcontext()
+                    with autocast_context:
+                        states=encoder.base_model(**features_in,return_dict=True).last_hidden_state
+                    vectors.append(states[:,0,:].float().cpu().to(torch.float16))
+            features=torch.cat(vectors,dim=0)
+            assert features.shape==(len(frame),768) and torch.isfinite(features).all()
+            payload={'features':features.contiguous(),
+                     'labels':torch.tensor([LABEL2ID[x] for x in frame.label],dtype=torch.long),
+                     'data_digest':recovery_frame_digest(frame),
+                     'checkpoint_signature':encoder_signature,
+                     'max_length':256,'max_target_context':192}
+            # Save on Drive only after the whole split completes; no partial file is accepted.
+            partial=cache_path.with_suffix('.part')
+            torch.save(payload,partial)
+            partial.replace(cache_path)
+            print('Saved verified',split,'embeddings:',features.shape,cache_path,
+                  round(cache_path.stat().st_size/1024**2,1),'MB')
+            CACHE_WAS_REBUILT=True
+            del vectors,features,dataset,loader
+        recovery_success=True
+    finally:
+        del encoder
+        if DEVICE.type=='cuda':torch.cuda.empty_cache()
+    assert recovery_success,'Embedding recovery did not finish; rerun to complete missing split.'
+
+if CACHE_WAS_REBUILT:
+    backup=OUTPUT/'stage2_3_embeddings_cache_BACKUP.zip'
+    with ZipFile(backup,'w',compression=ZIP_DEFLATED,compresslevel=1) as archive:
+        for filename in FEATURE_NAMES:
+            path=FEATURE_DIR/filename
+            assert path.is_file() and path.stat().st_size>0
+            archive.write(path,arcname='embeddings_cache/'+filename)
+    print('Created additional recovery backup:',backup)
+    print('Do not delete the original Stage 2.2 checkpoint. The ZIP has embeddings, not the BERT weights.')
+print('Embedding-cache recovery step ready:',FEATURE_DIR)
+
+
+def frame_digest(frame):
+    h=hashlib.sha256()
+    for doc,start,end,sentence,label in frame[['doc_index','start','end','text','label']].itertuples(index=False,name=None):
+        h.update(json.dumps([int(doc),int(start),int(end),str(sentence),str(label)],
+                            ensure_ascii=False).encode('utf-8'))
+        h.update(b'\n')
+    return h.hexdigest()
+
+assert frame_digest(train_df)==EXPECTED_TRAIN_DIGEST, (
+    'Training dataset order/annotations DIFFER from Stage 2.3. Do not reuse embeddings until resolved.')
+assert frame_digest(dev_df)==EXPECTED_DEV_DIGEST, (
+    'Dev dataset order/annotations DIFFER from Stage 2.3. Do not reuse embeddings until resolved.')
+print('Verified Stage 2.3 train/dev data ordering and annotation fingerprints.')
+
+STAGE23=Path(STAGE23_FOLDER_OVERRIDE) if STAGE23_FOLDER_OVERRIDE else DRIVE/'legal_summarizer_stage2_3_artifacts'
+FEATURE_DIR=STAGE23/'embeddings_cache'
+required=['train_context_CLS.pt','dev_context_CLS.pt']
+if not all((FEATURE_DIR/f).is_file() for f in required):
+    raise FileNotFoundError(
+        'Stage 2.3 embeddings are still missing after the optional recovery step.\n'
+        f'Looked in: {FEATURE_DIR}\n'
+        'The Stage 2.3 research ZIP does not include the embeddings.\n'
+        'Fix access to the saved Stage 2.2 fine-tuned checkpoint, then regenerate.\n'
+        'OR: in the account that ran Stage 2.3, share its '
+        'legal_summarizer_stage2_3_artifacts folder with this account, '
+        'then add a My Drive shortcut (at the ROOT) or set STAGE23_FOLDER_OVERRIDE '
+        'to the full mounted shortcut path and rerun from setup.\n'
+        'Do not load unfine-tuned InLegalBERT or regenerate a different cache.'
+    )
+
+def read_verified_features(split,frame):
+    path=FEATURE_DIR/f'{split}_context_CLS.pt'
+    item=torch.load(path,map_location='cpu',weights_only=True)
+    expected=torch.tensor([LABEL2ID[name] for name in frame.label],dtype=torch.long)
+    assert item['checkpoint_signature']==EXPECTED_ENCODER_SIGNATURE, (
+        f'{split}: encoder fingerprint mismatch — this is not the saved Stage 2.2 fine-tuned model')
+    assert item['data_digest']==frame_digest(frame),f'{split}: dataset mismatch'
+    assert item['max_length']==256 and item['max_target_context']==192, (
+        f'{split}: contextual tokenization parameters mismatch')
+    assert tuple(item['features'].shape)==(len(frame),768),f'{split}: features shape mismatch'
+    assert torch.equal(item['labels'],expected),f'{split}: role ordering/labels mismatch'
+    assert torch.isfinite(item['features']).all(),f'{split}: invalid embeddings'
+    print('Verified Stage 2.3 frozen embeddings:',split,tuple(item['features'].shape))
+    return item['features']
+
+TRAIN_EMB=read_verified_features('train',train_df)
+DEV_EMB=read_verified_features('dev',dev_df)
+print('Both caches verified. BERT ran during recovery only if an embedding cache was missing.')
+
+class JudgmentSequences(Dataset):
+    def __init__(self,frame,embeddings):
+        if len(frame)!=len(embeddings): raise ValueError('Feature row mismatch')
+        self.frame=frame.reset_index(drop=True)
+        self.embeddings=embeddings
+        self.parts=[]
+        for doc, part in self.frame.groupby('doc_index',sort=True):
+            idx=part.index.to_numpy(dtype=np.int64)
+            expected=np.arange(len(idx))
+            actual=part.sentence_index.to_numpy()
+            assert np.array_equal(actual,expected),f'Non-consecutive sentence order in document {doc}'
+            self.parts.append(idx)
+        assert sum(len(x) for x in self.parts)==len(frame)
+    def __len__(self): return len(self.parts)
+    def __getitem__(self,i):
+        ix=self.parts[i]
+        return (self.embeddings[ix].float(),
+                torch.tensor([LABEL2ID[x] for x in self.frame.iloc[ix].label],dtype=torch.long),
+                torch.tensor(ix,dtype=torch.long))
+
+def collate_judgments(batch):
+    b=len(batch);lengths=torch.tensor([len(x[0]) for x in batch],dtype=torch.long)
+    maxlen=int(lengths.max());dim=batch[0][0].shape[-1]
+    feats=torch.zeros(b,maxlen,dim,dtype=torch.float32)
+    labels=torch.zeros(b,maxlen,dtype=torch.long)
+    mask=torch.zeros(b,maxlen,dtype=torch.bool)
+    orig_index=torch.full((b,maxlen),-1,dtype=torch.long)
+    for j,(x,y,indices) in enumerate(batch):
+        n=len(x);feats[j,:n]=x;labels[j,:n]=y;mask[j,:n]=True;orig_index[j,:n]=indices
+    return dict(features=feats,labels=labels,mask=mask,lengths=lengths,indices=orig_index)
+
+TRAIN_DOCS=JudgmentSequences(train_df,TRAIN_EMB)
+DEV_DOCS=JudgmentSequences(dev_df,DEV_EMB)
+print('Train judgment sequences:',len(TRAIN_DOCS),'Dev judgment sequences:',len(DEV_DOCS))
+print('Train length: min/median/max:',min(map(len,TRAIN_DOCS.parts)),
+      np.median(list(map(len,TRAIN_DOCS.parts))),max(map(len,TRAIN_DOCS.parts)))
+batch=collate_judgments([TRAIN_DOCS[0],TRAIN_DOCS[1]])
+assert batch['mask'].sum().item()==len(TRAIN_DOCS.parts[0])+len(TRAIN_DOCS.parts[1])
+assert (batch['indices'][~batch['mask']]==-1).all()
+assert batch['features'].shape[-1]==768
+print('Synthetic batch:',{k:tuple(v.shape) for k,v in batch.items()})
+
+class SentenceBiLSTM(nn.Module):
+    def __init__(self,in_dim=768,n_labels=13,hidden=128,dropout=0.30):
+        super().__init__()
+        self.norm=nn.LayerNorm(in_dim)
+        self.drop=nn.Dropout(dropout)
+        self.lstm=nn.LSTM(in_dim,hidden,num_layers=1,batch_first=True,bidirectional=True)
+        self.classifier=nn.Linear(hidden*2,n_labels)
+    def forward(self,x,lengths):
+        x=self.drop(self.norm(x))
+        packed=nn.utils.rnn.pack_padded_sequence(x,lengths.cpu(),batch_first=True,
+                                                  enforce_sorted=False)
+        packed_out,_=self.lstm(packed)
+        output,_=nn.utils.rnn.pad_packed_sequence(packed_out,batch_first=True,total_length=x.shape[1])
+        return self.classifier(self.drop(output))
+
+train_ids=torch.tensor([LABEL2ID[x] for x in train_df.label],dtype=torch.long)
+counts=torch.bincount(train_ids,minlength=len(LABELS)).float()
+assert (counts>0).all(),'Missing class in training split'
+beta=CFG['class_weight_beta']
+effective=(1-beta**counts)/(1-beta)
+raw_w=(1/effective)
+raw_w=raw_w/raw_w.min()              # most common effective class: 1
+raw_w=raw_w.clamp(max=CFG['max_raw_weight'])
+# Weighted mean under training class distribution equals 1 (keeps numeric scale stable).
+class_weights=(raw_w/(raw_w*counts/counts.sum()).sum()).float().to(DEVICE)
+display(pd.DataFrame({'role':LABELS,'train_sentences':counts.int().tolist(),
+                      'effective_weight':class_weights.cpu().tolist()}).round(4))
+
+
+def balanced_loss(emissions,gold,mask,mode,weights=class_weights,gamma=CFG['focal_gamma']):
+    assert mask.dtype==torch.bool and mask.any()
+    scores=emissions[mask]       # ONLY unpadded sentence logits
+    target=gold[mask]
+    log_probs=F.log_softmax(scores,dim=-1)
+    true_log_prob=log_probs.gather(1,target[:,None]).squeeze(1)
+    importance=weights[target]
+    if mode=='weighted_ce':
+        per_sentence=-true_log_prob*importance
+    elif mode=='weighted_focal':
+        p=true_log_prob.exp()
+        per_sentence=-(1-p).pow(gamma)*true_log_prob*importance
+    else:
+        raise ValueError(f'Unsupported loss: {mode}')
+    return per_sentence.sum()/importance.sum()
+
+# Mathematical checks: focal gamma=0 equals weighted CE; pad gradients must be zero.
+probe=torch.randn(2,4,len(LABELS),device=DEVICE,requires_grad=True)
+labels_probe=torch.tensor([[0,1,2,3],[2,0,0,0]],device=DEVICE)
+mask_probe=torch.tensor([[True,True,True,True],[True,False,False,False]],device=DEVICE)
+a=balanced_loss(probe,labels_probe,mask_probe,'weighted_ce',class_weights)
+b=balanced_loss(probe,labels_probe,mask_probe,'weighted_focal',class_weights,gamma=0)
+assert torch.allclose(a,b,atol=1e-7)
+a.backward()
+assert probe.grad[~mask_probe].abs().sum()==0
+assert torch.isfinite(a)
+print('Balanced loss, focal gamma=0, and padding-gradient tests PASSED.')
+
+def metrics_from(y,p):
+    ids=np.arange(len(LABELS))
+    return dict(accuracy=float(accuracy_score(y,p)),
+                macro_f1=float(f1_score(y,p,labels=ids,average='macro',zero_division=0)),
+                weighted_f1=float(f1_score(y,p,labels=ids,average='weighted',zero_division=0)))
+
+@torch.no_grad()
+def predict_docs(net,docs):
+    net.eval()
+    loader=DataLoader(docs,batch_size=CFG['doc_batch_size'],shuffle=False,
+                      collate_fn=collate_judgments,num_workers=0)
+    idxs=[];ys=[];preds=[]
+    for batch in loader:
+        x=batch['features'].to(DEVICE)
+        logits=net(x,batch['lengths'])
+        p=logits.argmax(-1).cpu()
+        for i,n in enumerate(batch['lengths'].tolist()):
+            idxs.extend(batch['indices'][i,:n].tolist())
+            ys.extend(batch['labels'][i,:n].tolist())
+            preds.extend(p[i,:n].tolist())
+    ix=np.argsort(np.array(idxs))
+    y=np.asarray(ys)[ix];p=np.asarray(preds)[ix]
+    assert np.array_equal(np.asarray(idxs)[ix],np.arange(len(docs.frame)))
+    assert np.array_equal(y,[LABEL2ID[v] for v in docs.frame.label])
+    return y,p
+
+
+def write_reports(folder,name,y,p,measures):
+    pd.DataFrame(confusion_matrix(y,p,labels=np.arange(len(LABELS))),
+                 index=LABELS,columns=LABELS).to_csv(folder/'dev_confusion.csv')
+    rep=classification_report(y,p,labels=np.arange(len(LABELS)),
+                              target_names=LABELS,output_dict=True,zero_division=0)
+    pd.DataFrame(rep).T.to_csv(folder/'dev_class_report.csv')
+    predframe=dev_df.copy()
+    predframe['prediction']=[ID2LABEL[int(i)] for i in p]
+    predframe['correct']=y==p
+    predframe.to_csv(folder/'dev_predictions.csv',index=False)
+    (folder/'dev_metrics.json').write_text(json.dumps({'model':name,'split':'dev',**measures},indent=2))
+
+
+def train_one(mode,seed=SEED):
+    name=f'bilstm_{mode}_seed{seed}'
+    folder=OUTPUT/name
+    folder.mkdir(parents=True,exist_ok=True)
+    conf=dict(name=name,mode=mode,seed=seed,cfg=CFG,
+              class_weights=class_weights.cpu().tolist(),
+              feature_signature=EXPECTED_ENCODER_SIGNATURE,
+              train_digest=EXPECTED_TRAIN_DIGEST,dev_digest=EXPECTED_DEV_DIGEST)
+    complete=folder/'training_complete.json'
+    if (not FORCE_RETRAIN and complete.exists() and
+        (folder/'head_config.json').exists() and (folder/'best_head.pt').exists() and
+        (folder/'dev_metrics.json').exists() and
+        json.loads((folder/'head_config.json').read_text())==conf):
+        print('Reusing completed Stage 2.4 head:',name)
+        return json.loads((folder/'dev_metrics.json').read_text())
+    set_seed(seed)
+    net=SentenceBiLSTM(hidden=CFG['hidden_size'],n_labels=len(LABELS),
+                       dropout=CFG['dropout']).to(DEVICE)
+    optimizer=torch.optim.AdamW(net.parameters(),lr=CFG['lr'],weight_decay=CFG['weight_decay'])
+    best=-1.0; best_epoch=None; stale=0; history=[]
+    print('\nTRAIN',name)
+    for epoch in range(1,CFG['epochs']+1):
+        net.train()
+        loader=DataLoader(TRAIN_DOCS,batch_size=CFG['doc_batch_size'],shuffle=True,
+                          collate_fn=collate_judgments,num_workers=0,
+                          generator=torch.Generator().manual_seed(seed+epoch))
+        total_loss=0.0;count_total=0
+        for batch in tqdm(loader,desc=f'{name} epoch {epoch}',leave=False):
+            x=batch['features'].to(DEVICE)
+            gold=batch['labels'].to(DEVICE)
+            mask=batch['mask'].to(DEVICE)
+            emissions=net(x,batch['lengths'])
+            loss=balanced_loss(emissions,gold,mask,mode)
+            assert torch.isfinite(loss),f'{name}: nonfinite loss'
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            nn.utils.clip_grad_norm_(net.parameters(),CFG['max_grad_norm'])
+            optimizer.step()
+            n=int(mask.sum());total_loss+=float(loss.item())*n;count_total+=n
+        y,p=predict_docs(net,DEV_DOCS)
+        metric=metrics_from(y,p)
+        history.append(dict(epoch=epoch,train_loss=total_loss/count_total,**metric))
+        pd.DataFrame(history).to_csv(folder/'training_history.csv',index=False)
+        print(name,'epoch',epoch,'loss',round(total_loss/count_total,4),
+              'Macro F1',round(metric['macro_f1'],4),
+              'Weighted F1',round(metric['weighted_f1'],4),
+              'accuracy',round(metric['accuracy'],4))
+        if metric['macro_f1']>best+1e-7:
+            best=metric['macro_f1'];best_epoch=epoch;stale=0
+            torch.save({'bilstm':net.state_dict(),'epoch':epoch,'config':conf},folder/'best_head.pt')
+            (folder/'head_config.json').write_text(json.dumps(conf,indent=2))
+            write_reports(folder,name,y,p,metric)
+            (folder/'best_epoch.json').write_text(json.dumps(dict(epoch=epoch,**metric),indent=2))
+        else:
+            stale+=1
+            if stale>=CFG['patience']:
+                print('Early stopping — best epoch:',best_epoch)
+                break
+    (folder/'training_complete.json').write_text(json.dumps(
+        {'finished':True,'epochs_run':len(history),'best_epoch':best_epoch},indent=2))
+    return json.loads((folder/'dev_metrics.json').read_text())
+
+WEIGHTED_CE_RESULT=train_one('weighted_ce')
+print('Weighted CE DEV:',WEIGHTED_CE_RESULT)
+
+FOCAL_RESULT=train_one('weighted_focal')
+print('Weighted Focal DEV:',FOCAL_RESULT)
+
+rows=[{'model':'Stage 2.3 BiLSTM (recorded DEV baseline)',**REFERENCE_STAGE23},
+      {'model':'Stage 2.3 BiLSTM + CRF (reference)',**REFERENCE_STAGE23_CRF},
+      {'model':'Stage 2.4 Weighted CE',**WEIGHTED_CE_RESULT},
+      {'model':'Stage 2.4 Weighted Focal',**FOCAL_RESULT}]
+comparison=pd.DataFrame(rows).set_index('model')
+comparison.to_csv(OUTPUT/'stage2_4_model_comparison.csv')
+print('Validation results (%) — same OpenNyAI dev split:')
+display((comparison[['accuracy','macro_f1','weighted_f1']]*100).round(2))
+
+per_role=[]
+for name,folder in [('Weighted CE',OUTPUT/f'bilstm_weighted_ce_seed{SEED}'),
+                    ('Weighted Focal',OUTPUT/f'bilstm_weighted_focal_seed{SEED}')]:
+    rpt=pd.read_csv(folder/'dev_class_report.csv',index_col=0)
+    for role in LABELS:
+        per_role.append(dict(model=name,role=role,f1=float(rpt.at[role,'f1-score']),
+                             precision=float(rpt.at[role,'precision']),
+                             recall=float(rpt.at[role,'recall']),
+                             support=int(rpt.at[role,'support'])))
+
+# Actual Stage 2.3 report, if same executing account can see it.
+original=STAGE23/'bilstm_softmax'/'dev_class_report.csv'
+if original.exists():
+    prior=pd.read_csv(original,index_col=0)
+    for role in LABELS:
+        per_role.append(dict(model='Stage 2.3 Baseline',role=role,
+                             f1=float(prior.at[role,'f1-score']),
+                             precision=float(prior.at[role,'precision']),
+                             recall=float(prior.at[role,'recall']),
+                             support=int(prior.at[role,'support'])))
+role_df=pd.DataFrame(per_role)
+role_df.to_csv(OUTPUT/'stage2_4_per_role_comparison.csv',index=False)
+focus=['RATIO','PRE_NOT_RELIED','ARG_PETITIONER','ARG_RESPONDENT','RLC','PRE_RELIED','ANALYSIS','FAC']
+display(role_df[role_df.role.isin(focus)].pivot(index='role',columns='model',values='f1').round(3))
+
+previous=STAGE23/'bilstm_softmax'/'dev_predictions.csv'
+if previous.exists():
+    old=pd.read_csv(previous)
+    assert len(old)==len(dev_df)
+    assert np.array_equal(old.doc_index.to_numpy(),dev_df.doc_index.to_numpy())
+    assert np.array_equal(old.sentence_index.to_numpy(),dev_df.sentence_index.to_numpy())
+    assert np.array_equal(old.label.to_numpy(),dev_df.label.to_numpy())
+    prev_correct=(old.prediction==old.label).to_numpy()
+    for name in ('bilstm_weighted_ce_seed'+str(SEED),'bilstm_weighted_focal_seed'+str(SEED)):
+        cur=pd.read_csv(OUTPUT/name/'dev_predictions.csv')
+        correct=(cur.prediction==cur.label).to_numpy()
+        print(name,'fixed',int((~prev_correct&correct).sum()),
+              'old mistakes; harmed',int((prev_correct&~correct).sum()),'old correct predictions')
+else:
+    print('Original Stage 2.3 predictions not found in this Drive — comparisons use recorded metrics only.')
+
+ax=(comparison[['macro_f1','weighted_f1']]*100).plot(kind='bar',rot=12,figsize=(10,5))
+ax.set_ylim(0,100);ax.set_ylabel('Validation F1 (%)')
+ax.set_title('Stage 2.3 vs 2.4: class-weighted/focal loss (DEV)')
+plt.tight_layout();plt.savefig(OUTPUT/'stage2_4_f1_comparison.png',dpi=150);plt.show()
+
+(OUTPUT/'stage2_4_run_configuration.json').write_text(json.dumps({
+    'seed':SEED,'architecture':'frozen InLegalBERT CLS + document BiLSTM',
+    'cfg':CFG,'encoder_signature':EXPECTED_ENCODER_SIGNATURE,
+    'train_digest':EXPECTED_TRAIN_DIGEST,'dev_digest':EXPECTED_DEV_DIGEST,
+    'baseline_source':'Stage 2.3 uploaded results ZIP (validation metrics)',
+    'baseline_metrics':REFERENCE_STAGE23,'test_used':False
+},indent=2))
+print('Research reminder: report all metrics, including any degradation. No official test evaluation yet.')
+
+from zipfile import ZipFile,ZIP_DEFLATED
+ARCHIVE=Path('/content/stage2_4_research_results.zip')
+count=0
+with ZipFile(ARCHIVE,'w',ZIP_DEFLATED) as out:
+    for path in OUTPUT.rglob('*'):
+        if not path.is_file():continue
+        if path.suffix.lower() in ('.csv','.json','.png','.pt'):
+            out.write(path,path.relative_to(OUTPUT))
+            count+=1
+print('Saved',count,'artifacts to:',ARCHIVE)
+try:
+    from google.colab import files
+    files.download(str(ARCHIVE))
+except Exception as exc:
+    print('Download manually from Colab file browser:',ARCHIVE,type(exc).__name__)

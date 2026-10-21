@@ -1,0 +1,1332 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Notebook-only setup: %pip -q install "transformers==4.57.6" "huggingface-hub==0.36.2" "safetensors>=0.4" "spacy>=3.8,<4" "rouge-score>=0.1.2" "scikit-learn>=1.4" "pandas>=2" "requests>=2.30" "tqdm>=4.60"
+
+import io, os, re, json, math, zipfile, hashlib, shutil, random, time
+from pathlib import Path
+from datetime import datetime, timezone
+from collections import Counter
+import numpy as np
+import pandas as pd
+import requests, spacy
+import torch
+from torch import nn
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from rouge_score import rouge_scorer
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+from IPython.display import display, Markdown
+
+SEED=42
+random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
+if torch.cuda.is_available():torch.cuda.manual_seed_all(SEED)
+DEVICE=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Stage 3.6 device:',DEVICE)
+print('Transformers import OK')
+
+# Stage 3.6 — fixed, predeclared experiment. Do not edit after running the official test.
+EXPERIMENT_STAGE='3.6'
+TRAIN_DOCS=1000
+DEV_DOCS=40
+MAX_SENTENCES_PER_DOC=120
+SUMMARY_WORD_BUDGET=400
+ENCODER_BATCH_SIZE=12 if DEVICE.type=='cuda' else 3
+EPOCHS=16
+PATIENCE=4
+HEAD_BATCH_SIZE=128
+HEAD_LR=8e-4
+DROPOUT=0.25
+SUMMARY_REPETITION_THRESHOLD=0.86
+POSITIVE_FRACTION=0.16  # Used only by a legacy Stage 3.5 regression check, not Stage 3.6 training.
+FORCE_REENCODE=False
+SENTENCE_LIMITS=(120,)
+WEAK_LABEL_METHODS=('tfidf_budgeted','greedy_rouge')
+ROLE_MODES=(False,True)
+BOOTSTRAP_RESAMPLES=4000
+RUN_OFFICIAL_TEST=True  # Runs ONCE with frozen model fingerprints; do not retune after test.
+
+assert TRAIN_DOCS==1000 and DEV_DOCS==40 and MAX_SENTENCES_PER_DOC==120
+assert SUMMARY_WORD_BUDGET==400 and len(WEAK_LABEL_METHODS)*len(ROLE_MODES)==4
+print('Stage 3.6 config: 1000 train / 40 dev / 120 candidate sentences / 400 words / 4 models')
+print('Official final test enabled:',RUN_OFFICIAL_TEST)
+
+from pathlib import Path
+import io, os, zipfile, shutil, hashlib, json
+
+INPUT_ROOT=Path('/kaggle/input')
+WORK_ROOT=Path('/kaggle/working')
+if not INPUT_ROOT.is_dir() or not WORK_ROOT.is_dir():
+    raise RuntimeError('This notebook is the Kaggle edition. Run it on kaggle.com/code with the required datasets attached.')
+
+# Optional explicit Kaggle paths. Most users should leave these blank: automatic discovery searches /kaggle/input.
+STAGE22_FOLDER_OVERRIDE = ''  # Path directly to best_checkpoint/ OR its parent context256/ OR the containing artifacts folder
+STAGE23_HEAD_ZIP_OVERRIDE = '' # Full path to stage2_3_bilstm_head_bundle.zip
+
+# Keep the existing experiment's directory names, but use Kaggle's writable working folder.
+DRIVE=WORK_ROOT
+OUT_DIR=WORK_ROOT/'legal_summarizer_stage3_6_artifacts'
+OUT_DIR.mkdir(parents=True,exist_ok=True)
+ASSET_STAGING=WORK_ROOT/'stage3_6_verified_assets'
+ASSET_STAGING.mkdir(parents=True,exist_ok=True)
+
+REQUIRED_HEAD_FILES={'bilstm_softmax/head_config.json','bilstm_softmax/best_head.pt'}
+REQUIRED_ENCODER={'config.json','tokenizer.json','model.safetensors'}
+
+# Kaggle sometimes exposes uploaded ZIP files in an expanded folder, or wraps them
+# under a dataset-prefix directory. Both forms contain the *same* trained head.
+# Accept either layout, but always normalize to the original two required paths.
+def _head_config_looks_right(data):
+    try:
+        cfg=json.loads(data)
+        return isinstance(cfg.get('feature_checkpoint_signature'),str) and len(cfg['feature_checkpoint_signature'])==64
+    except (ValueError,TypeError,UnicodeDecodeError,AttributeError):
+        return False
+
+def _normalized_head_zip_from_archive(path):
+    """Find a real trained head in a ZIP, even when wrapped in an extra folder."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            members={x.filename.replace('\\','/').lstrip('./'):x.filename
+                     for x in z.infolist() if not x.is_dir()}
+            for name in sorted(members):
+                if not name.endswith('head_config.json'):continue
+                parent=name.rsplit('/',1)[0] if '/' in name else ''
+                best=f'{parent}/best_head.pt' if parent else 'best_head.pt'
+                if best not in members:continue
+                if not _head_config_looks_right(z.read(members[name])):continue
+                # Already in expected layout; avoid rewriting its bytes or hash.
+                if name=='bilstm_softmax/head_config.json' and best=='bilstm_softmax/best_head.pt':
+                    if z.testzip() is None:
+                        return path
+                    continue
+                output=ASSET_STAGING/('normalized_head_'+hashlib.sha256(str(path).encode()).hexdigest()[:12]+'.zip')
+                with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED) as normalized:
+                    normalized.writestr('bilstm_softmax/head_config.json',z.read(members[name]))
+                    normalized.writestr('bilstm_softmax/best_head.pt',z.read(members[best]))
+                print('Recognized ZIP with nested head files:',path)
+                print('Normalized trained head bundle:',output)
+                return output
+    except (OSError,ValueError,zipfile.BadZipFile,RuntimeError) as exc:
+        print('Cannot use candidate ZIP:',path,'(',type(exc).__name__,')')
+    return None
+
+def _normalized_head_zip_from_folder(folder):
+    cfg=folder/'head_config.json'
+    pt=folder/'best_head.pt'
+    if not (cfg.is_file() and pt.is_file() and _head_config_looks_right(cfg.read_bytes())):
+        return None
+    output=ASSET_STAGING/('normalized_head_folder_'+hashlib.sha256(str(folder).encode()).hexdigest()[:12]+'.zip')
+    with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED) as z:
+        z.write(cfg,arcname='bilstm_softmax/head_config.json')
+        z.write(pt,arcname='bilstm_softmax/best_head.pt')
+    print('Recognized extracted Stage 2.3 head folder:',folder)
+    print('Repacked for compatibility:',output)
+    return output
+
+def locate_stage23_head():
+    override=Path(STAGE23_HEAD_ZIP_OVERRIDE).expanduser() if STAGE23_HEAD_ZIP_OVERRIDE.strip() else None
+    candidates=[]
+    if override and override.is_file():candidates.append(override)
+    # Don't open the very large IN-Abs dataset archive unnecessarily.
+    candidates.extend(sorted((p for p in INPUT_ROOT.rglob('*')
+                    if p.is_file() and p.suffix.lower()=='.zip' and
+                    ('head' in p.name.lower() or 'stage2_3' in p.name.lower() or
+                     'bilstm' in p.name.lower() or p.stat().st_size<32_000_000)),
+                    key=lambda p:(0 if 'head_bundle' in p.name.lower() else 1,str(p))))
+    seen=set()
+    for path in candidates:
+        if str(path) in seen:continue
+        seen.add(str(path))
+        bundle=_normalized_head_zip_from_archive(path)
+        if bundle:return bundle
+    # Kaggle may extract an uploaded ZIP into an input directory.
+    folders=[]
+    if override and override.is_dir():folders.append(override)
+    folders.extend(p.parent for p in INPUT_ROOT.rglob('head_config.json') if p.is_file())
+    for folder in dict.fromkeys(folders):
+        bundle=_normalized_head_zip_from_folder(folder)
+        if bundle:return bundle
+    print('\nKaggle attached input directories:',[str(p) for p in INPUT_ROOT.iterdir()])
+    print('Possible relevant files (up to 40):')
+    relevant=[p for p in INPUT_ROOT.rglob('*') if p.is_file() and
+              (p.suffix.lower() in ('.zip','.pt','.pth') or 'head' in p.name.lower() or
+               'bilstm' in p.name.lower())]
+    for p in relevant[:40]:print('  ',p,'bytes:',p.stat().st_size)
+    if not relevant:print('  None found under /kaggle/input — confirm Add Input was applied to this notebook.')
+    return None
+
+HEAD_ZIP=locate_stage23_head()
+if HEAD_ZIP is None:
+    raise FileNotFoundError(
+        'Could not find a VALID trained Stage 2.3 BiLSTM head (ZIP or extracted folder) '
+        'in /kaggle/input. The files must include best_head.pt and head_config.json '
+        'from the Stage 2.3 trained Softmax bundle. Check the file listing printed above. '
+        'Original: https://drive.google.com/file/d/1ZlBeH_aiyQxAuRZj4xouEeArL3NQVat7/view')
+with zipfile.ZipFile(HEAD_ZIP) as z:
+    head_cfg=json.loads(z.read('bilstm_softmax/head_config.json'))
+EXPECTED_ENCODER_SIG=head_cfg['feature_checkpoint_signature']
+
+# Same lightweight checkpoint fingerprint used by the original training notebook.
+def _candidate_encoder_signature(path):
+    h=hashlib.sha256()
+    for name in ('config.json','tokenizer.json','model.safetensors'):
+        p=path/name
+        if not p.is_file():return None
+        h.update(name.encode());h.update(str(p.stat().st_size).encode())
+        with p.open('rb') as f:
+            h.update(f.read(128*1024))
+            if p.stat().st_size>128*1024:
+                f.seek(-128*1024,2);h.update(f.read(128*1024))
+    return h.hexdigest()
+
+def _find_checkpoint_directories():
+    roots=[INPUT_ROOT,ASSET_STAGING]
+    found={}
+    for root in roots:
+        for f in root.rglob('model.safetensors'):
+            parent=f.parent
+            if REQUIRED_ENCODER.issubset({p.name for p in parent.iterdir() if p.is_file()}):
+                found[str(parent.resolve())]=parent
+    if STAGE22_FOLDER_OVERRIDE.strip():
+        custom=Path(STAGE22_FOLDER_OVERRIDE).expanduser()
+        for possible in (custom,custom/'best_checkpoint',custom/'context256'/'best_checkpoint'):
+            if possible.is_dir() and all((possible/n).is_file() for n in REQUIRED_ENCODER):
+                found[str(possible.resolve())]=possible
+    return list(found.values())
+
+checkpoint_dirs=_find_checkpoint_directories()
+
+# Kaggle Dataset uploads often include the Google Drive-downloaded checkpoint as a ZIP.
+# Extract *only* the needed checkpoint files, not arbitrary ZIP entries; reject path traversal.
+if not any(_candidate_encoder_signature(p)==EXPECTED_ENCODER_SIG for p in checkpoint_dirs):
+    checkpoint_zip_candidates=sorted(p for p in INPUT_ROOT.rglob('*.zip')
+        if p!=HEAD_ZIP and ('checkpoint' in p.name.lower() or 'encoder' in p.name.lower()
+                            or 'stage2_2' in p.name.lower() or p.stat().st_size>200_000_000))
+    for archive in checkpoint_zip_candidates:
+        try:
+            with zipfile.ZipFile(archive) as z:
+                names=[i.filename for i in z.infolist() if not i.is_dir()]
+                prefixes=set(str(Path(n).parent) for n in names if Path(n).name=='model.safetensors')
+                found_prefix=next((prefix for prefix in sorted(prefixes)
+                    if all((name if prefix=='.' else f'{prefix}/{name}') in names for name in REQUIRED_ENCODER)),None)
+                if found_prefix is None:continue
+                dst=ASSET_STAGING/'context256'/'best_checkpoint'
+                dst.mkdir(parents=True,exist_ok=True)
+                allowed={'model.safetensors','config.json','tokenizer.json',
+                         'tokenizer_config.json','special_tokens_map.json','vocab.txt',
+                         'added_tokens.json','generation_config.json'}
+                for entry in z.infolist():
+                    if entry.is_dir():continue
+                    if str(Path(entry.filename).parent)!=found_prefix:continue
+                    if Path(entry.filename).name not in allowed:continue
+                    dest=dst/Path(entry.filename).name
+                    if dest.is_file() and dest.stat().st_size==entry.file_size:continue
+                    with z.open(entry) as rf, dest.open('wb') as wf:
+                        shutil.copyfileobj(rf,wf,length=4*1024*1024)
+                if _candidate_encoder_signature(dst)==EXPECTED_ENCODER_SIG:
+                    checkpoint_dirs.append(dst)
+                    print('Safely extracted matching Stage 2.2 checkpoint ZIP:',archive)
+                    break
+                else:
+                    print('Checkpoint in ZIP did not match saved BiLSTM fingerprint:',archive.name)
+        except (OSError,zipfile.BadZipFile,ValueError) as exc:
+            print('Skipping non-checkpoint archive:',archive.name,type(exc).__name__)
+
+CHECKPOINT_DIR=next((p for p in checkpoint_dirs
+                     if _candidate_encoder_signature(p)==EXPECTED_ENCODER_SIG),None)
+if CHECKPOINT_DIR is None:
+    print('Encoder candidates found:',[str(p) for p in checkpoint_dirs])
+    raise FileNotFoundError('Missing the MATCHING fine-tuned Stage 2.2 context256/best_checkpoint model. '
+                            'Upload its full folder or ZIP as a private Kaggle Dataset; '
+                            'do not use the public base InLegalBERT model.')
+
+print('Kaggle GPU:',torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none (enable GPU accelerator)')
+print('Verified Stage 2.2 fine-tuned encoder:',CHECKPOINT_DIR)
+print('Verified Stage 2.3 trained head:',HEAD_ZIP)
+print('Writable Stage 3.6 outputs:',OUT_DIR)
+print('READ-ONLY Kaggle inputs:',INPUT_ROOT)
+
+
+def checkpoint_signature(path):
+    h=hashlib.sha256()
+    for name in ('config.json','tokenizer.json','model.safetensors'):
+        p=Path(path)/name
+        if not p.is_file(): raise FileNotFoundError(p)
+        h.update(name.encode());h.update(str(p.stat().st_size).encode())
+        with p.open('rb') as f:
+            h.update(f.read(128*1024))
+            if p.stat().st_size>128*1024:
+                f.seek(-128*1024,2);h.update(f.read(128*1024))
+    return h.hexdigest()
+
+with zipfile.ZipFile(HEAD_ZIP) as z:
+    required=['bilstm_softmax/head_config.json','bilstm_softmax/best_head.pt']
+    if not all(n in z.namelist() for n in required):
+        raise ValueError('Invalid Stage 2.3 bundle; missing trained head or configuration')
+    head_config=json.loads(z.read(required[0]))
+    weights_data=z.read(required[1])
+
+SIGNATURE=checkpoint_signature(CHECKPOINT_DIR)
+if head_config['feature_checkpoint_signature'] != SIGNATURE:
+    raise RuntimeError('Stage 2.3 head was trained using a DIFFERENT encoder checkpoint. '
+                       'Do not combine these weights. Check the Stage 2.2 folder you mounted.')
+
+import io
+saved=torch.load(io.BytesIO(weights_data),map_location='cpu',weights_only=True)
+assert saved['feature_signature']==SIGNATURE
+assert saved['crf'] is None and head_config['use_crf'] is False
+CFG=head_config['cfg']
+LABELS=['ANALYSIS','ARG_PETITIONER','ARG_RESPONDENT','FAC','ISSUE','NONE','PREAMBLE',
+        'PRE_NOT_RELIED','PRE_RELIED','RATIO','RLC','RPC','STA']
+
+class SentenceBiLSTM(nn.Module):
+    # Exactly the same architecture as saved Stage 2.3 Softmax head
+    def __init__(self,in_dim=768,n_labels=13,hidden=128,dropout=0.3):
+        super().__init__()
+        self.norm=nn.LayerNorm(in_dim)
+        self.drop=nn.Dropout(dropout)
+        self.lstm=nn.LSTM(in_dim,hidden,num_layers=1,batch_first=True,bidirectional=True)
+        self.classifier=nn.Linear(hidden*2,n_labels)
+    def forward(self,x,lengths):
+        x=self.drop(self.norm(x))
+        packed=nn.utils.rnn.pack_padded_sequence(x,lengths.cpu(),batch_first=True,enforce_sorted=False)
+        packed_out,_=self.lstm(packed)
+        output,_=nn.utils.rnn.pad_packed_sequence(packed_out,batch_first=True,total_length=x.shape[1])
+        return self.classifier(self.drop(output))
+
+DEVICE=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+HEAD=SentenceBiLSTM(hidden=CFG['hidden_size'],dropout=CFG['dropout']).to(DEVICE)
+HEAD.load_state_dict(saved['bilstm'],strict=True)
+HEAD.eval()
+print('Loaded Stage 2.3 Softmax BiLSTM, trained best epoch',saved['epoch'])
+print('Checkpoint fingerprint MATCHED:',SIGNATURE[:16]+'...')
+
+TOKENIZER=AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR),use_fast=True,local_files_only=True)
+MARK_PREV=TOKENIZER.encode('PREVIOUS:',add_special_tokens=False)
+MARK_NEXT=TOKENIZER.encode('NEXT:',add_special_tokens=False)
+ENCODER=AutoModelForSequenceClassification.from_pretrained(str(CHECKPOINT_DIR),local_files_only=True).to(DEVICE).eval()
+assert ENCODER.config.num_labels==13
+assert [ENCODER.config.id2label[i] for i in range(13)]==LABELS
+for p in ENCODER.parameters():p.requires_grad_(False)
+COLLATOR=DataCollatorWithPadding(tokenizer=TOKENIZER,return_tensors='pt')
+
+def pack_context_ids(target_ids,previous_ids,next_ids,max_length=256,target_cap=192):
+    tgt=list(target_ids[:min(target_cap,max_length-3)])
+    budget=max_length-len(tgt)-3
+    pmark=MARK_PREV if previous_ids else []
+    nmark=MARK_NEXT if next_ids else []
+    free=budget-len(pmark)-len(nmark)
+    if free<0: raise ValueError('No token budget for context markers')
+    prev_cap=min(len(previous_ids),(free+1)//2) if previous_ids else 0
+    next_cap=min(len(next_ids),free//2) if next_ids else 0
+    left=free-prev_cap-next_cap
+    prev_cap+=min(len(previous_ids)-prev_cap,left)
+    left=free-prev_cap-next_cap
+    next_cap+=min(len(next_ids)-next_cap,left)
+    prev_part=list(previous_ids[-prev_cap:]) if prev_cap else []
+    next_part=list(next_ids[:next_cap]) if next_cap else []
+    context=pmark+prev_part+nmark+next_part
+    ids=[TOKENIZER.cls_token_id]+tgt+[TOKENIZER.sep_token_id]+context+[TOKENIZER.sep_token_id]
+    segment0=len(tgt)+2
+    item={'input_ids':ids,'attention_mask':[1]*len(ids),
+          'token_type_ids':[0]*segment0+[1]*(len(ids)-segment0)}
+    assert len(ids)<=max_length
+    return item
+
+# Verify the context packing exactly respects the Stage 2.3 settings.
+assert CFG['max_length']==256 and CFG['max_target_context']==192
+assert len(pack_context_ids(list(range(500)),list(range(300)),list(range(300)))['input_ids'])<=256
+print('Stage 2.3 context format reconstructed successfully.')
+
+# Optional full path inside Kaggle inputs to the *unmodified* official Zenodo dataset.zip.
+DATASET_ZIP_OVERRIDE = ''
+DATASET_MD5 = 'c77948fe580d26200f5c9fe53b81485d'
+DATASET_URLS = [
+    'https://zenodo.org/records/7152317/files/dataset.zip?download=1',
+    'https://zenodo.org/api/records/7152317/files/dataset.zip/content',
+]
+ZIP_CACHE=WORK_ROOT/'official_dataset_7152317.zip'
+
+def md5sum(path):
+    h=hashlib.md5()
+    with open(path,'rb') as f:
+        for chunk in iter(lambda:f.read(4*1024*1024),b''):h.update(chunk)
+    return h.hexdigest()
+
+def correct_zip(path):
+    path=Path(path)
+    return path.is_file() and md5sum(path)==DATASET_MD5
+
+zip_candidates=[]
+if DATASET_ZIP_OVERRIDE.strip():
+    zip_candidates=[Path(DATASET_ZIP_OVERRIDE).expanduser()]
+else:
+    zip_candidates=[ZIP_CACHE]
+    for pattern in ('dataset.zip','official_dataset_7152317.zip','*7152317*.zip'):
+        zip_candidates+=list(INPUT_ROOT.rglob(pattern))
+
+# If user supplies an explicit archive, a wrong checksum is a hard failure.
+if DATASET_ZIP_OVERRIDE.strip() and not correct_zip(zip_candidates[0]):
+    raise ValueError('DATASET_ZIP_OVERRIDE is not the original official Zenodo archive (MD5 mismatch).')
+dataset_zip=next((p for p in zip_candidates if correct_zip(p)),None)
+if dataset_zip is not None:
+    print('Reusing verified local/attached Zenodo dataset archive:',dataset_zip)
+else:
+    download_path=ZIP_CACHE
+    for url in DATASET_URLS:
+        try:
+            print('Downloading official dataset from:',url)
+            with requests.get(url,stream=True,timeout=(20,120),allow_redirects=True) as resp:
+                resp.raise_for_status()
+                with download_path.open('wb') as f:
+                    for part in resp.iter_content(chunk_size=4*1024*1024):
+                        if part:f.write(part)
+            if not correct_zip(download_path):
+                raise ValueError('Downloaded ZIP checksum mismatch')
+            dataset_zip=download_path
+            break
+        except Exception as exc:
+            print('Download failed:',type(exc).__name__,str(exc)[:180])
+            download_path.unlink(missing_ok=True)
+    if dataset_zip is None:
+        raise FileNotFoundError('Could not access official Zenodo dataset.zip. '
+                                'Enable Internet in Kaggle settings or attach the original dataset.zip via Add Input.')
+
+print('Verified official dataset MD5:',md5sum(dataset_zip),'size(MB):',round(dataset_zip.stat().st_size/1024**2,1))
+
+
+def dataset_tail(path, dataset_name):
+    parts=path.replace('\\','/').split('/')
+    aliases={dataset_name.lower(), dataset_name.lower().replace('-','')}
+    hits=[i for i,p in enumerate(parts) if p.lower().replace('_','-') in aliases]
+    return parts[hits[-1]+1:] if hits else None
+
+def index_official_dataset(z):
+    inabs={'train':{'judgement':{},'summary':{}},'test':{'judgement':{},'summary':{}}}
+    inext={}
+    for info in z.infolist():
+        if info.is_dir() or not info.file_size or info.file_size>20_000_000: continue
+        rel=dataset_tail(info.filename,'IN-Abs')
+        if rel and len(rel)>=3:
+            low=[x.lower() for x in rel]
+            split='train' if low[0]=='train-data' else 'test' if low[0]=='test-data' else None
+            typ=low[1]
+            if split and typ in ('judgement','judgment','summary'):
+                typ='judgement' if typ=='judgment' else typ
+                key='/'.join(x.lower() for x in rel[2:])
+                if key.endswith('.txt'):
+                    inabs[split][typ][key]=info.filename
+        rel=dataset_tail(info.filename,'IN-Ext')
+        if rel and len(rel)>=2 and rel[0].lower() in ('judgement','judgment'):
+            key='/'.join(x.lower() for x in rel[1:])
+            if key.endswith('.txt'): inext[key]=info.filename
+    pairs={}
+    for split in ('train','test'):
+        d=inabs[split]
+        keys=sorted(set(d['judgement']) & set(d['summary']))
+        pairs[split]=[{'id':key,'judgment_path':d['judgement'][key],
+                       'summary_path':d['summary'][key], 'split':split} for key in keys]
+    return pairs, inext, inabs
+
+def clean_text(raw):
+    return raw.decode('utf-8',errors='replace') if isinstance(raw,bytes) else str(raw)
+
+def normalized_doc(s):
+    return re.sub(r'[^a-z0-9]+',' ',s.lower()).strip()
+
+def document_signatures(s):
+    s=normalized_doc(s)
+    h=lambda x: hashlib.sha256(x.encode('utf-8')).hexdigest()
+    return (h(s),h(s[:4000]),len(s))
+
+with zipfile.ZipFile(dataset_zip) as z:
+    PAIRS, INEXT_FILES, INDEX=index_official_dataset(z)
+    print('IN-Abs matched pairs train:',len(PAIRS['train']),'test:',len(PAIRS['test']))
+    print('IN-Ext judgments for leakage audit:',len(INEXT_FILES))
+    if len(PAIRS['train'])<TRAIN_DOCS+DEV_DOCS or len(PAIRS['test'])<1 or len(INEXT_FILES)<1:
+        print('First 25 ZIP entries:',z.namelist()[:25])
+        raise RuntimeError('Dataset indexing failed; do not train until real datasets match.')
+    # The paper/archive may list 7,030 training documents, but the usable paired
+    # intersection can be smaller (e.g., 7,028). Audit, report, and exclude
+    # unpaired files instead of crashing or silently fabricating examples.
+    unmatched = []
+    for split in ('train', 'test'):
+        judgments = set(INDEX[split]['judgement'])
+        summaries = set(INDEX[split]['summary'])
+        print(f'{split}: {len(judgments)} judgment files, {len(summaries)} summary files, '
+              f'{len(PAIRS[split])} matched pairs')
+        for key in sorted(judgments - summaries):
+            unmatched.append({'split': split, 'id': key, 'problem': 'judgment without matching summary'})
+        for key in sorted(summaries - judgments):
+            unmatched.append({'split': split, 'id': key, 'problem': 'summary without matching judgment'})
+    UNMATCHED_DATASET_FILES = pd.DataFrame(unmatched, columns=['split', 'id', 'problem'])
+    if not UNMATCHED_DATASET_FILES.empty:
+        print('WARNING: Unmatched IN-Abs files (excluded, not invented):')
+        display(UNMATCHED_DATASET_FILES)
+    assert len(PAIRS['test']) == 100, 'IN-Abs held-out test split differs from expected 100; inspect archive.'
+    assert len(PAIRS['train']) >= TRAIN_DOCS + DEV_DOCS, 'Insufficient matched IN-Abs training pairs.'
+
+    assert len(INEXT_FILES)==50, 'Expected 50 IN-Ext judgments for overlap audit.'
+    ext_sigs={}
+    for k,path in INEXT_FILES.items():
+        ext_sigs[k]=document_signatures(clean_text(z.read(path)))
+    ext_names={re.sub(r'[^a-z0-9]','',Path(k).stem.lower()) for k in INEXT_FILES}
+    ext_full={x[0] for x in ext_sigs.values()}
+    ext_prefix={x[1] for x in ext_sigs.values()}
+    all_abs=PAIRS['train']+PAIRS['test']
+    allowed_train=[]; excluded=[]; inabs_sigs={}
+    for item in tqdm(all_abs,desc='Check dataset overlap (document-only)'):
+        raw=clean_text(z.read(item['judgment_path']))
+        sig=document_signatures(raw); inabs_sigs[(item['split'],item['id'])]=sig
+        k=re.sub(r'[^a-z0-9]','',Path(item['id']).stem.lower())
+        collision=(sig[0] in ext_full or (sig[1] in ext_prefix and sig[2]>=1000)
+                   or (len(k)>=10 and k in ext_names))
+        if collision: excluded.append({'split':item['split'],'id':item['id'],'reason':'filename or normalized text match'})
+        elif item['split']=='train':allowed_train.append(item)
+    # Check full/prefix duplicates between original IN-Abs training and official test as well.
+    test_full={inabs_sigs[('test',x['id'])][0] for x in PAIRS['test']}
+    filtered=[]
+    for row in allowed_train:
+        if inabs_sigs[('train',row['id'])][0] in test_full:
+            excluded.append({'split':'train','id':row['id'],'reason':'overlap with official IN-Abs test'})
+        else:filtered.append(row)
+    ALLOWED_TRAIN=filtered
+    assert len(ALLOWED_TRAIN)>=TRAIN_DOCS+DEV_DOCS
+    print('Excluded possible IN-Ext/test overlaps:',len(excluded))
+    print('Available IN-Abs training documents after screening:',len(ALLOWED_TRAIN))
+    display(pd.DataFrame(excluded).head(25)) if excluded else None
+
+# LOCKED IDs copied from completed Stage 3.4 run_manifest.json, not re-sampled.
+STAGE34_TRAIN_IDS = ['7107.txt', '1657.txt', '1171.txt', '6434.txt', '4381.txt', '1564.txt', '5568.txt', '1592.txt', '298.txt', '5772.txt', '5117.txt', '5753.txt', '6931.txt', '6220.txt', '2454.txt', '6932.txt', '6788.txt', '3819.txt', '6958.txt', '5064.txt', '4213.txt', '2125.txt', '2214.txt', '1686.txt', '1419.txt', '2.txt', '3337.txt', '733.txt', '6506.txt', '3162.txt', '4715.txt', '3122.txt', '2988.txt', '6310.txt', '3267.txt', '3721.txt', '2795.txt', '4874.txt', '132.txt', '4147.txt', '2302.txt', '5288.txt', '5136.txt', '4066.txt', '5013.txt', '764.txt', '1824.txt', '3521.txt', '262.txt', '1897.txt', '6533.txt', '4327.txt', '4551.txt', '3288.txt', '2395.txt', '1249.txt', '2077.txt', '2145.txt', '303.txt', '2670.txt', '5274.txt', '785.txt', '906.txt', '4737.txt', '4803.txt', '5338.txt', '2790.txt', '6740.txt', '6055.txt', '4932.txt', '5997.txt', '826.txt', '6683.txt', '3176.txt', '3489.txt', '3123.txt', '3482.txt', '740.txt', '3522.txt', '6771.txt', '6517.txt', '2237.txt', '4470.txt', '1257.txt', '3410.txt', '1303.txt', '207.txt', '5321.txt', '910.txt', '6880.txt', '804.txt', '6201.txt', '1127.txt', '1376.txt', '238.txt', '846.txt', '3452.txt', '6147.txt', '410.txt', '1814.txt', '85.txt', '2565.txt', '1575.txt', '5389.txt', '2551.txt', '3064.txt', '2114.txt', '3578.txt', '7008.txt', '4936.txt', '774.txt', '5988.txt', '4682.txt', '4275.txt', '5658.txt', '5923.txt', '866.txt', '6029.txt', '3570.txt', '607.txt', '6021.txt', '6185.txt', '405.txt', '4547.txt', '5160.txt', '569.txt', '830.txt', '3667.txt', '1839.txt', '1504.txt', '4624.txt', '3078.txt', '4611.txt', '3380.txt', '4919.txt', '1673.txt', '722.txt', '5155.txt', '398.txt', '1710.txt', '5242.txt', '1707.txt', '5705.txt', '121.txt', '5644.txt', '3020.txt', '463.txt', '1115.txt', '620.txt', '5067.txt', '364.txt', '4356.txt', '1441.txt', '2053.txt', '5262.txt', '5585.txt', '486.txt', '2674.txt', '5620.txt', '5699.txt', '2133.txt', '899.txt', '1049.txt', '5737.txt', '3900.txt', '2973.txt', '762.txt', '1687.txt', '4132.txt', '4280.txt', '1570.txt', '7112.txt', '748.txt', '3965.txt', '5561.txt', '3700.txt', '5409.txt', '2645.txt', '498.txt', '393.txt', '1139.txt', '7123.txt', '885.txt', '2842.txt', '1841.txt', '6322.txt', '587.txt', '3370.txt', '177.txt', '1528.txt', '6991.txt', '5213.txt', '2963.txt', '112.txt', '612.txt', '6251.txt', '2814.txt', '3343.txt', '5751.txt', '5650.txt', '1055.txt', '6614.txt', '3104.txt', '4755.txt', '1485.txt', '6632.txt', '1317.txt', '1319.txt', '2426.txt', '1913.txt', '1782.txt', '2928.txt', '3984.txt', '2335.txt', '5847.txt', '4322.txt', '203.txt', '3052.txt', '1047.txt', '5551.txt', '4894.txt', '5640.txt', '450.txt', '2274.txt', '2192.txt', '3746.txt', '2404.txt', '5991.txt', '6916.txt', '2820.txt', '6275.txt', '4563.txt', '3633.txt', '2917.txt', '4030.txt', '6017.txt', '3610.txt', '3290.txt', '5341.txt', '2235.txt', '1085.txt', '1187.txt', '1655.txt', '4525.txt', '6453.txt', '6431.txt', '4775.txt', '5493.txt', '929.txt', '6473.txt', '1878.txt', '3438.txt', '3053.txt', '548.txt', '3591.txt', '5462.txt', '1631.txt', '418.txt', '1969.txt', '1371.txt', '5672.txt', '6664.txt', '4763.txt', '1133.txt', '4593.txt', '2707.txt', '4062.txt', '5437.txt', '7071.txt', '2233.txt', '3437.txt', '5367.txt', '746.txt', '5866.txt', '1894.txt', '4417.txt', '819.txt', '4311.txt', '5578.txt', '4702.txt', '5164.txt', '4404.txt', '3534.txt', '1652.txt', '2351.txt', '4808.txt', '574.txt', '3901.txt', '711.txt', '6086.txt', '3342.txt', '3544.txt', '6126.txt', '2400.txt', '1613.txt', '4011.txt', '3741.txt', '2830.txt', '912.txt', '1395.txt', '6720.txt', '2915.txt', '3580.txt', '3612.txt', '4291.txt', '3630.txt', '2903.txt', '719.txt', '278.txt', '4766.txt', '6660.txt', '3887.txt', '3583.txt', '469.txt', '861.txt', '404.txt', '6800.txt', '2084.txt', '1842.txt', '6546.txt', '7.txt', '1026.txt', '7034.txt', '1828.txt', '2168.txt', '6408.txt', '33.txt', '4951.txt', '2309.txt', '5595.txt', '1721.txt', '1937.txt', '5390.txt', '5575.txt', '2174.txt', '5180.txt', '6857.txt', '1161.txt', '4217.txt', '6452.txt', '6938.txt', '113.txt', '5749.txt', '6859.txt', '4596.txt', '4348.txt', '2852.txt', '5728.txt', '3149.txt', '507.txt', '2845.txt', '684.txt', '6424.txt', '448.txt', '6550.txt', '1638.txt', '6150.txt', '3215.txt', '3862.txt', '734.txt', '3808.txt', '4493.txt', '6860.txt', '5173.txt', '3797.txt', '6442.txt', '1012.txt', '5795.txt', '6990.txt', '4901.txt', '2734.txt', '2666.txt', '7080.txt', '4492.txt', '5174.txt', '5832.txt', '3950.txt', '2537.txt', '6791.txt', '3446.txt', '301.txt', '5562.txt', '4505.txt', '2336.txt', '286.txt', '775.txt', '401.txt', '2002.txt', '905.txt', '3192.txt', '6503.txt', '2452.txt', '2491.txt', '2665.txt', '4051.txt', '3917.txt', '5819.txt', '3640.txt', '5433.txt', '3986.txt', '3781.txt', '4226.txt', '3138.txt', '6810.txt', '4996.txt', '3121.txt', '741.txt', '1834.txt', '1941.txt', '7014.txt', '589.txt', '5234.txt', '5036.txt', '4016.txt', '5193.txt', '3012.txt', '411.txt', '6599.txt', '6486.txt', '6349.txt', '4661.txt', '1939.txt', '89.txt', '4769.txt', '205.txt', '6976.txt', '7090.txt', '1190.txt', '3949.txt', '2157.txt', '2060.txt', '3227.txt', '709.txt', '3389.txt', '2436.txt', '3074.txt', '4970.txt', '3879.txt', '302.txt', '7073.txt', '5445.txt', '2569.txt', '689.txt', '4685.txt', '731.txt', '102.txt', '347.txt', '1723.txt', '4610.txt', '3680.txt', '3627.txt', '1873.txt', '1027.txt', '4949.txt', '3158.txt', '5202.txt', '3659.txt', '1620.txt', '4347.txt', '95.txt', '6183.txt', '1072.txt', '58.txt', '1694.txt', '3062.txt', '3159.txt', '6104.txt', '5960.txt', '2638.txt', '630.txt', '2533.txt', '5865.txt', '3681.txt', '6161.txt', '4600.txt', '2647.txt', '2861.txt', '6187.txt', '5431.txt', '1844.txt', '780.txt', '5563.txt', '5678.txt', '1145.txt', '2269.txt', '2163.txt', '5890.txt', '4393.txt', '5763.txt', '4910.txt', '3650.txt', '1174.txt', '6229.txt', '6127.txt', '7119.txt', '941.txt', '4633.txt', '3731.txt', '5060.txt', '5928.txt', '3850.txt', '208.txt', '5311.txt', '5614.txt', '1751.txt', '833.txt', '4985.txt', '2206.txt', '6085.txt', '4687.txt', '6207.txt', '6252.txt', '1298.txt', '6259.txt', '5611.txt', '6357.txt', '5402.txt', '2846.txt', '783.txt', '2648.txt', '4707.txt', '3219.txt', '4564.txt', '3170.txt', '5606.txt', '4663.txt', '639.txt', '4846.txt', '538.txt', '6842.txt', '6451.txt', '2794.txt', '568.txt', '2729.txt', '1094.txt', '5697.txt', '2732.txt', '5725.txt', '1453.txt', '6505.txt', '1455.txt', '618.txt', '3070.txt', '6102.txt', '210.txt', '1315.txt', '5973.txt', '2946.txt', '4105.txt', '6352.txt', '5391.txt', '6456.txt', '3021.txt', '6131.txt', '2530.txt', '296.txt', '2749.txt', '5491.txt', '1646.txt', '5209.txt', '1876.txt', '3352.txt', '2658.txt', '1660.txt', '273.txt', '5765.txt', '2636.txt', '6977.txt', '4902.txt', '4174.txt', '4082.txt', '5886.txt', '4734.txt', '1538.txt', '5286.txt', '6256.txt', '5151.txt', '7036.txt', '5171.txt', '983.txt', '4667.txt', '555.txt', '3665.txt', '1330.txt', '2166.txt', '4689.txt', '3268.txt', '5710.txt', '3651.txt', '1791.txt', '2213.txt', '1033.txt', '5615.txt', '4320.txt', '1070.txt', '1292.txt', '6913.txt', '1041.txt', '236.txt', '7092.txt', '864.txt', '6808.txt', '2394.txt', '5473.txt', '5307.txt', '1924.txt', '3174.txt', '1731.txt', '2866.txt', '1101.txt', '1140.txt', '2871.txt', '2303.txt', '5517.txt', '1325.txt', '5784.txt', '2718.txt', '803.txt', '4621.txt', '2128.txt', '5823.txt', '2329.txt', '4255.txt', '3169.txt', '2344.txt', '172.txt', '6088.txt', '4434.txt', '4739.txt', '1965.txt', '631.txt', '4740.txt', '16.txt', '6729.txt', '5901.txt', '6737.txt', '3535.txt', '2325.txt', '5113.txt', '1090.txt', '5323.txt', '2849.txt', '3102.txt', '1469.txt', '3810.txt', '5005.txt', '2943.txt', '2467.txt', '3626.txt', '6985.txt', '2637.txt', '4831.txt', '593.txt', '3367.txt', '5195.txt', '802.txt', '2462.txt', '4508.txt', '1817.txt', '4545.txt', '698.txt', '4515.txt', '5787.txt', '6199.txt', '6170.txt', '2596.txt', '2577.txt', '2506.txt', '6766.txt', '2509.txt', '5564.txt', '2437.txt', '4620.txt', '2756.txt', '3499.txt', '6265.txt', '5799.txt', '4885.txt', '3237.txt', '1737.txt', '1735.txt', '2663.txt', '5219.txt', '5544.txt', '1918.txt', '211.txt', '5820.txt', '3298.txt', '993.txt', '4645.txt', '1388.txt', '1530.txt', '4012.txt', '5989.txt', '147.txt', '158.txt', '135.txt', '4409.txt', '5613.txt', '6330.txt', '3150.txt', '6767.txt', '6823.txt', '6501.txt', '3186.txt', '6906.txt', '2975.txt', '2412.txt', '484.txt', '6023.txt', '2804.txt', '1743.txt', '4034.txt', '3556.txt', '2887.txt', '2918.txt', '976.txt', '5239.txt', '4256.txt', '2119.txt', '4363.txt', '2312.txt', '1331.txt', '1494.txt', '5510.txt', '6576.txt', '3699.txt', '2017.txt', '2205.txt', '6579.txt', '1632.txt', '4088.txt', '3512.txt', '6997.txt', '1440.txt', '3386.txt', '2468.txt', '2877.txt', '1209.txt', '6779.txt', '5375.txt', '5351.txt', '1150.txt', '4864.txt', '5359.txt', '4877.txt', '1422.txt', '2007.txt', '5726.txt', '5122.txt', '867.txt', '3300.txt', '4718.txt', '6820.txt', '2215.txt', '7030.txt', '5477.txt', '2324.txt', '1387.txt', '3702.txt', '1198.txt', '3861.txt', '3528.txt', '4209.txt', '3540.txt', '4252.txt', '5591.txt', '1431.txt', '1975.txt', '5371.txt', '3059.txt', '2844.txt', '6789.txt', '5727.txt', '3948.txt', '1189.txt', '5628.txt', '3925.txt', '3456.txt', '6290.txt', '3098.txt', '5358.txt', '4120.txt', '572.txt', '1728.txt', '903.txt', '754.txt', '5904.txt', '852.txt', '4341.txt', '5782.txt', '654.txt', '2486.txt', '1584.txt', '1480.txt', '2872.txt', '228.txt', '6793.txt', '478.txt', '1853.txt', '6191.txt', '816.txt', '2941.txt', '1846.txt', '1653.txt', '6008.txt', '4180.txt', '1347.txt', '3738.txt', '610.txt', '6099.txt', '3642.txt', '6569.txt', '2952.txt', '5106.txt', '5129.txt', '6650.txt', '2626.txt', '1696.txt', '2319.txt', '1887.txt', '3171.txt', '2656.txt', '547.txt', '3385.txt', '5004.txt', '7011.txt', '3715.txt', '5777.txt', '6064.txt', '1432.txt', '1087.txt', '1465.txt', '3843.txt', '2363.txt', '617.txt', '2430.txt', '5023.txt', '2576.txt', '1600.txt', '6288.txt', '375.txt', '5519.txt', '3864.txt', '1938.txt', '4478.txt', '6272.txt', '6727.txt', '6515.txt', '4494.txt', '3011.txt', '818.txt', '6297.txt', '6239.txt', '6094.txt', '4110.txt', '4191.txt', '138.txt', '2444.txt', '6432.txt', '5224.txt', '3432.txt', '2253.txt', '5508.txt', '6262.txt', '5647.txt', '4790.txt', '2974.txt', '4705.txt', '317.txt', '1367.txt', '909.txt', '5754.txt', '5042.txt', '545.txt', '942.txt', '991.txt', '1821.txt', '3842.txt', '782.txt', '2107.txt', '5996.txt', '1984.txt', '2542.txt', '5475.txt', '5089.txt', '1786.txt', '5975.txt', '4981.txt', '1392.txt', '773.txt', '2891.txt', '6348.txt', '6636.txt', '1248.txt', '3619.txt', '1792.txt', '3674.txt', '2033.txt', '6009.txt', '5601.txt', '458.txt', '6257.txt', '1074.txt', '4606.txt', '6941.txt', '92.txt', '4168.txt', '5579.txt', '3728.txt', '6382.txt', '6125.txt', '6492.txt', '5093.txt', '900.txt', '2176.txt', '5182.txt', '1843.txt', '5696.txt', '6752.txt', '1603.txt', '9.txt', '4723.txt', '3235.txt', '918.txt', '3291.txt', '3254.txt', '2914.txt', '6695.txt', '5253.txt', '432.txt', '2062.txt', '810.txt', '181.txt', '4531.txt', '5056.txt', '2494.txt', '6659.txt', '840.txt', '3265.txt', '4549.txt', '5460.txt', '2023.txt', '491.txt', '5662.txt', '759.txt', '2812.txt', '2606.txt', '170.txt', '2098.txt', '1771.txt', '4802.txt', '6365.txt', '3717.txt', '1170.txt', '2661.txt', '1819.txt', '4909.txt', '3634.txt', '5291.txt', '4576.txt', '1470.txt', '6077.txt', '4396.txt', '6625.txt', '6570.txt', '5689.txt', '541.txt', '3586.txt', '6209.txt', '2051.txt', '6007.txt', '4136.txt', '5192.txt', '5259.txt', '3873.txt', '1264.txt', '3937.txt', '3411.txt', '6462.txt', '1096.txt', '6111.txt', '4220.txt', '5178.txt', '3488.txt', '1809.txt', '25.txt', '6271.txt', '3472.txt', '5184.txt', '6593.txt', '379.txt', '3105.txt', '2634.txt', '4262.txt', '6267.txt', '1785.txt', '1909.txt', '3330.txt', '1554.txt']
+STAGE34_DEV_IDS = ['5166.txt', '4268.txt', '5676.txt', '108.txt', '6481.txt', '6839.txt', '5889.txt', '1719.txt', '4879.txt', '6699.txt', '2349.txt', '322.txt', '6644.txt', '4859.txt', '3185.txt', '5746.txt', '3530.txt', '3910.txt', '2132.txt', '959.txt', '766.txt', '4748.txt', '4837.txt', '394.txt', '3899.txt', '3190.txt', '3478.txt', '1822.txt', '6723.txt', '2568.txt', '201.txt', '4567.txt', '3894.txt', '4829.txt', '4638.txt', '4421.txt', '2040.txt', '1566.txt', '3332.txt', '6583.txt']
+assert len(STAGE34_TRAIN_IDS)==len(set(STAGE34_TRAIN_IDS))==TRAIN_DOCS
+assert len(STAGE34_DEV_IDS)==len(set(STAGE34_DEV_IDS))==DEV_DOCS
+assert set(STAGE34_TRAIN_IDS).isdisjoint(STAGE34_DEV_IDS)
+allowed_by_id={x['id']:x for x in ALLOWED_TRAIN}
+missing=set(STAGE34_TRAIN_IDS+STAGE34_DEV_IDS)-set(allowed_by_id)
+assert not missing, 'Previously used IDs are excluded or missing: '+str(sorted(missing)[:10])
+TRAIN_ROWS=[allowed_by_id[x] for x in STAGE34_TRAIN_IDS]
+DEV_ROWS=[allowed_by_id[x] for x in STAGE34_DEV_IDS]
+assert set(x['id'] for x in TRAIN_ROWS).isdisjoint(x['id'] for x in DEV_ROWS)
+assert not set(x['id'] for x in TRAIN_ROWS+DEV_ROWS).intersection(x['id'] for x in PAIRS['test'])
+print('STAGE 3.6 LOCKED',len(TRAIN_ROWS),'training and',len(DEV_ROWS),'development cases from Stage 3.4.')
+print('Official IN-Abs test cases untouched; IN-Ext document-overlap checks complete.')
+assert not any(row['split']=='test' for row in excluded), 'Official IN-Abs test overlaps IN-Ext judgments under the overlap audit; held-out evaluation blocked.'
+
+
+NLP=spacy.blank('en')
+NLP.add_pipe('sentencizer')
+SCORER=rouge_scorer.RougeScorer(['rouge1','rouge2','rougeL'],use_stemmer=True)
+ROUGE_TOKENIZER=SCORER._tokenizer
+
+def normalize_for_segmentation(text):
+    text=text.replace('\u00ad','')
+    text=re.sub(r'(?<=\w)-\s*\n\s*(?=\w)','',text)
+    return re.sub(r'\s+',' ',text).strip()
+
+def split_sentences(text):
+    clean=normalize_for_segmentation(text)
+    NLP.max_length=max(NLP.max_length,len(clean)+100)
+    return [s.text.strip() for s in NLP(clean).sents if re.search('[A-Za-z]',s.text)]
+
+def select_window_indices(n,limit):
+    if n<=limit:return list(range(n))
+    first=round(limit*0.5);last=round(limit*0.25);middle=limit-first-last
+    mid_start=max(first,(n-middle)//2)
+    idx=list(range(first))+list(range(mid_start,mid_start+middle))+list(range(n-last,n))
+    assert len(idx)==len(set(idx))==limit
+    return sorted(idx)
+
+def unigram_bigram_counts(text):
+    from collections import Counter
+    toks=ROUGE_TOKENIZER.tokenize(text)
+    return Counter(toks),Counter(zip(toks,toks[1:]))
+
+def tfidf_weak_labels(sentences,reference,positive_frac=POSITIVE_FRACTION):
+    """Stage 3.4's same positive-fraction sentence-ranking rule."""
+    assert sentences
+    tfidf=TfidfVectorizer(stop_words='english',ngram_range=(1,2),max_features=12000,
+                          token_pattern=r'(?u)\b\w\w+\b')
+    try:
+        vectors=tfidf.fit_transform(list(sentences)+[reference])
+        similarity=cosine_similarity(vectors[:-1],vectors[-1]).ravel()
+    except ValueError:
+        similarity=np.zeros(len(sentences),dtype=np.float32)
+    eligible=[i for i,s in enumerate(sentences) if len(s.split())>=5]
+    npos=min(len(eligible),max(1,round(len(eligible)*positive_frac)))
+    rank=sorted(eligible,key=lambda i:(-similarity[i],i))
+    y=np.zeros(len(sentences),dtype=np.float32)
+    y[rank[:npos]]=1
+    return y
+
+def clipped_overlap_gain(used,candidate,reference_counts):
+    """Improvement in clipped reference n-gram recall, counting repeats correctly."""
+    return sum(min(count,max(0,reference_counts[gram]-used[gram]))
+               for gram,count in candidate.items())
+
+def greedy_oracle_labels(sentences,reference,budget=SUMMARY_WORD_BUDGET):
+    """Training-only greedy ROUGE-1/2 *marginal coverage*, with word-budget and cost.
+    This is NOT a ROUGE-L oracle and NOT a supervised human sentence annotation.
+    It does not consume the dev labels unless called explicitly as a diagnostic.
+    """
+    from collections import Counter
+    ref1,ref2=unigram_bigram_counts(reference)
+    candidate_ngrams=[unigram_bigram_counts(s) for s in sentences]
+    used1,used2=Counter(),Counter()
+    selected=[];words_used=0;remaining=set(range(len(sentences)))
+    while remaining:
+        best_i=None;best_utility=0.0
+        for i in sorted(remaining):
+            wc=len(sentences[i].split())
+            if wc<5 or wc>budget-words_used: continue
+            c1,c2=candidate_ngrams[i]
+            gain1=clipped_overlap_gain(used1,c1,ref1)/max(1,sum(ref1.values()))
+            gain2=clipped_overlap_gain(used2,c2,ref2)/max(1,sum(ref2.values()))
+            # Prioritize previously uncovered reference bigrams, with mild penalty for long sentences.
+            utility=(0.4*gain1+0.6*gain2)/(wc**0.35)
+            if utility>best_utility+1e-12:
+                best_utility=utility;best_i=i
+        if best_i is None: break  # No sentence adds relevant n-gram coverage within remaining budget.
+        selected.append(best_i)
+        words_used+=len(sentences[best_i].split())
+        remaining.remove(best_i)
+        c1,c2=candidate_ngrams[best_i]
+        used1.update(c1);used2.update(c2)
+    labels=np.zeros(len(sentences),dtype=np.float32)
+    labels[selected]=1.0
+    # If a human summary has no lexical match, don't silently create an all-negative training case.
+    if not selected and sentences:
+        fallback=tfidf_weak_labels(sentences,reference)
+        if fallback.any():labels[int(np.flatnonzero(fallback)[0])]=1.0
+    return labels
+
+def tfidf_budgeted_labels(sentences,reference,budget=SUMMARY_WORD_BUDGET):
+    """Budget-matched TF-IDF extraction teacher (training human summaries ONLY).
+    Same 400-word constraint as greedy ROUGE; selects sentence importance labels.
+    The reference is used to construct TRAIN labels, never as a model input.
+    """
+    assert sentences and budget>0
+    try:
+        vec=TfidfVectorizer(stop_words='english',ngram_range=(1,2),max_features=12000,
+            token_pattern=r'(?u)\b\w\w+\b').fit_transform(list(sentences)+[reference])
+        similarities=cosine_similarity(vec[:-1],vec[-1]).ravel()
+    except ValueError:
+        similarities=np.zeros(len(sentences),dtype=np.float32)
+    ranking=sorted(range(len(sentences)),key=lambda i:(-float(similarities[i]),i))
+    y=np.zeros(len(sentences),dtype=np.float32)
+    used=0
+    for i in ranking:
+        wc=len(sentences[i].split())
+        if wc<5 or wc>budget-used:continue
+        y[i]=1.;used+=wc
+        if used==budget:break
+    return y
+
+def lexical_reference_coverage(sentences,reference):
+    from collections import Counter
+    r1,r2=unigram_bigram_counts(reference)
+    union1,union2=Counter(),Counter()
+    for s in sentences:
+        a,b=unigram_bigram_counts(s)
+        # Source candidates' aggregate n-gram availability (no word budget).
+        union1.update(a)
+        union2.update(b)
+    cover1=sum(min(n,union1[t]) for t,n in r1.items())/max(1,sum(r1.values()))
+    cover2=sum(min(n,union2[t]) for t,n in r2.items())/max(1,sum(r2.values()))
+    return float(cover1),float(cover2)
+
+assert len(select_window_indices(350,120))==120
+assert len(select_window_indices(350,240))==240
+assert select_window_indices(350,240)==sorted(set(select_window_indices(350,240)))
+assert set(select_window_indices(350,120)).issubset(select_window_indices(350,240))
+_example=['The petition challenged the order of the tribunal.','The court examined the facts carefully.',
+          'The respondent argued that the contract was invalid.','The appeal is allowed with costs.']
+assert tfidf_weak_labels(_example,'The appeal is allowed.',0.16).sum()==1
+assert greedy_oracle_labels(_example,'The appeal is allowed.').sum()>=1
+assert clipped_overlap_gain(Counter({'x':1}),Counter({'x':3}),Counter({'x':2}))==1
+assert 0<tfidf_budgeted_labels(_example,'The appeal is allowed.',400).sum()<=4
+print('Sentence selection + budget-matched TF-IDF + greedy-label tests passed.')
+
+CASES={limit:{'train':[],'dev':[]} for limit in SENTENCE_LIMITS}
+INPUT_COUNTS=[]
+with zipfile.ZipFile(dataset_zip) as z:
+    for split,rows in [('train',TRAIN_ROWS),('dev',DEV_ROWS)]:
+        for row in tqdm(rows,desc=f'Load and sample {split} judgments'):
+            judgment=clean_text(z.read(row['judgment_path']))
+            reference=clean_text(z.read(row['summary_path']))
+            all_sents=split_sentences(judgment)
+            if len(all_sents)<5:raise ValueError('Too few sentences for '+row['id'])
+            INPUT_COUNTS.append({'case_id':row['id'],'split':split,'all_sentences':len(all_sents),
+                                 'input_words':len(judgment.split())})
+            for limit in SENTENCE_LIMITS:
+                idx=select_window_indices(len(all_sents),limit)
+                casesent=[all_sents[i] for i in idx]
+                CASES[limit][split].append({'id':row['id'],'sentences':casesent,
+                    'original_indices':idx,'original_sentence_count':len(all_sents),
+                    'reference':reference,'input_words':len(judgment.split())})
+for limit in SENTENCE_LIMITS:
+    assert len(CASES[limit]['train'])==TRAIN_DOCS and len(CASES[limit]['dev'])==DEV_DOCS
+    assert [x['id'] for x in CASES[limit]['dev']]==STAGE34_DEV_IDS
+    assert [x['id'] for x in CASES[limit]['train']]==STAGE34_TRAIN_IDS
+    assert all('pseudo_y' not in c for c in CASES[limit]['dev'])
+
+INPUT_STATS=pd.DataFrame(INPUT_COUNTS)
+print('Loaded only training/development judgments, not test judgments.')
+display(INPUT_STATS.groupby('split')['all_sentences'].describe().round(1))
+print('The official IN-Abs test split is reserved for the last section of this notebook.')
+
+LABEL_STATS=[]
+for limit in SENTENCE_LIMITS:
+    for case in tqdm(CASES[limit]['train'],desc='Generate budget-matched labels on 1,000 training judgments'):
+        case['weak_labels']={
+            'tfidf_budgeted':tfidf_budgeted_labels(case['sentences'],case['reference']),
+            'greedy_rouge':greedy_oracle_labels(case['sentences'],case['reference'])}
+        for name,y in case['weak_labels'].items():
+            total_words=sum(len(case['sentences'][int(i)].split()) for i in np.flatnonzero(y))
+            assert y.shape==(len(case['sentences']),) and y.sum()>0
+            assert total_words<=SUMMARY_WORD_BUDGET, (case['id'],name,total_words)
+            LABEL_STATS.append({'case_id':case['id'],'limit':limit,'label_method':name,
+                'positive_count':int(y.sum()),'positive_fraction':float(y.mean()),
+                'positive_words':total_words})
+    assert all('weak_labels' not in c for c in CASES[limit]['dev'])
+LABEL_REPORT=pd.DataFrame(LABEL_STATS)
+display(LABEL_REPORT.groupby('label_method')[['positive_count','positive_fraction','positive_words']].agg(['mean','std','min','max']).round(3))
+assert LABEL_REPORT['positive_words'].max()<=400
+print('Both weak teachers respect <=400 words per training judgment.')
+
+def sentences_digest(sentences):
+    return hashlib.sha256(json.dumps(sentences,ensure_ascii=False,separators=(',',':')).encode('utf-8')).hexdigest()
+FEATURE_CACHE=OUT_DIR/'inabs_feature_cache'
+FEATURE_CACHE.mkdir(parents=True,exist_ok=True)
+HEAD_DIGEST=hashlib.sha256(Path(HEAD_ZIP).read_bytes()).hexdigest()
+# Search Stage 3.5/3.4/3.3 caches supplied as Kaggle input datasets (optional).
+PRIOR_CACHE_DIRS=[]
+seen_cache_paths=set()
+for root in (INPUT_ROOT,WORK_ROOT):
+    for store in root.rglob('inabs_feature_cache'):
+        if not store.is_dir() or store.resolve()==FEATURE_CACHE.resolve():continue
+        if str(store.resolve()) in seen_cache_paths:continue
+        seen_cache_paths.add(str(store.resolve()))
+        artifact_root=store.parent
+        manifest_files=sorted(artifact_root.rglob('run_manifest.json'))
+        verified=False
+        for manifest in manifest_files:
+            try:
+                old=json.loads(manifest.read_text(encoding='utf-8'))
+                max_s=old.get('max_sentences')
+                limits=old.get('sentence_limits',[])
+                if (old.get('encoder_signature')==SIGNATURE and
+                    old.get('head_zip_digest')==hashlib.sha256(Path(HEAD_ZIP).read_bytes()).hexdigest() and
+                    old.get('dataset_md5')==DATASET_MD5 and
+                    (max_s==120 or 120 in limits)):
+                    verified=True;break
+            except (OSError,ValueError,TypeError):pass
+        if verified:
+            name=artifact_root.name
+            PRIOR_CACHE_DIRS.append((name,store,120))
+            print('Verified compatible prior embedding cache:',store)
+        else:
+            print('Ignoring cache without compatible provenance manifest:',store)
+if not PRIOR_CACHE_DIRS:
+    print('No verified prior Kaggle cache attached. GPU encoding is required for 1,040 cases;'
+          ' the new cache will be written to',FEATURE_CACHE)
+CACHE_STATS=Counter()
+
+def effective_neighbors(indices,j):
+    left=indices[j-1] if j and indices[j-1]+1==indices[j] else None
+    right=indices[j+1] if j+1<len(indices) and indices[j]+1==indices[j+1] else None
+    return left,right
+
+def reusable_cls_map(current,prior):
+    # Same fine-tuned encoder, source sentence, immediate retained-context neighbors.
+    # Never reuse document-level BiLSTM ROLE predictions: their sequence changed.
+    if prior is None:return {}
+    prev_by_idx={source_idx:j for j,source_idx in enumerate(prior['original_indices'])}
+    found={}
+    for j,k in enumerate(current['original_indices']):
+        old_i=prev_by_idx.get(k)
+        if old_i is None:continue
+        if current['sentences'][j]!=prior['sentences'][old_i]:continue
+        if effective_neighbors(current['original_indices'],j)!=effective_neighbors(prior['original_indices'],old_i):continue
+        found[j]=old_i
+    return found
+
+PRIOR_120_BY_ID={case['id']:case for split in ('train','dev') for case in CASES[120][split]}
+
+@torch.inference_mode()
+def encode_case(case):
+    sents=case['sentences']
+    raw=TOKENIZER(sents,add_special_tokens=False,padding=False,return_attention_mask=False)['input_ids']
+    original=case['original_indices']
+    reusable=reusable_cls_map(case,PRIOR_120_BY_ID.get(case['id'])) if len(sents)>120 else {}
+    emb=np.empty((len(sents),768),dtype=np.float16)
+    for j,i_old in reusable.items():
+        emb[j]=PRIOR_120_BY_ID[case['id']]['cls'][i_old].astype(np.float16)
+    pending=[i for i in range(len(sents)) if i not in reusable]
+    for start in range(0,len(pending),ENCODER_BATCH_SIZE):
+        ids=pending[start:start+ENCODER_BATCH_SIZE]
+        packed=[pack_context_ids(raw[i],
+                   raw[i-1] if i and original[i-1]+1==original[i] else [],
+                   raw[i+1] if i+1<len(sents) and original[i]+1==original[i+1] else [],
+                   max_length=256,target_cap=192) for i in ids]
+        batch=COLLATOR(packed)
+        batch={k:v.to(DEVICE) for k,v in batch.items()}
+        with torch.amp.autocast(device_type='cuda',enabled=(DEVICE.type=='cuda')):
+            out=ENCODER.base_model(**batch,return_dict=True).last_hidden_state[:,0,:]
+        emb[ids]=out.float().cpu().numpy().astype(np.float16)
+    CACHE_STATS['partial_cls_reused_240']+=len(reusable)
+    CACHE_STATS['new_cls_encoded']+=len(pending)
+    encoded=torch.from_numpy(emb)
+    starts=[0]+[i for i in range(1,len(sents)) if original[i]!=original[i-1]+1]
+    ends=starts[1:]+[len(sents)]
+    role_parts=[]
+    for a,b in zip(starts,ends):
+        logits=HEAD(encoded[a:b].float().unsqueeze(0).to(DEVICE),
+                    torch.tensor([b-a],dtype=torch.long))[0]
+        role_parts.append(logits.float().softmax(-1).cpu().numpy().astype(np.float16))
+    return encoded.numpy(),np.concatenate(role_parts,axis=0)
+
+def get_cached_features(case,limit):
+    digest=sentences_digest(case['sentences'])
+    digest=hashlib.sha256((digest+json.dumps(case['original_indices'])).encode('utf-8')).hexdigest()
+    key=hashlib.sha256((case['id']+SIGNATURE+digest).encode()).hexdigest()[:28]
+    home=FEATURE_CACHE/(key+'.npz')
+    candidates=[('stage35',home)]+[(name,store/(key+'.npz')) for name,store,lim in PRIOR_CACHE_DIRS if lim==limit]
+    if not FORCE_REENCODE:
+        for origin,path in candidates:
+            if not path.is_file():continue
+            try:
+                with np.load(path,allow_pickle=False) as z:
+                    if not ({'sig','doc_digest','head_digest','cls','roles'}.issubset(set(z.files))
+                            and str(z['sig'])==SIGNATURE and str(z['doc_digest'])==digest
+                            and str(z['head_digest'])==HEAD_DIGEST
+                            and z['cls'].shape==(len(case['sentences']),768)
+                            and z['roles'].shape==(len(case['sentences']),13)):
+                        continue
+                    emb=z['cls'].astype(np.float32)
+                    prob=z['roles'].astype(np.float32)
+                    if not np.isfinite(emb).all() or not np.isfinite(prob).all():continue
+                    CACHE_STATS[f'{origin}_{limit}_hit']+=1
+                    if path!=home:
+                        temp=home.with_suffix('.partial.npz')
+                        np.savez_compressed(temp,cls=emb.astype(np.float16),roles=prob.astype(np.float16),
+                            sig=SIGNATURE,doc_digest=digest,head_digest=HEAD_DIGEST)
+                        temp.replace(home)
+                    return emb,prob
+            except (OSError,ValueError,zipfile.BadZipFile):
+                print('Invalid feature cache, regenerating:',path)
+    emb,prob=encode_case(case)
+    assert emb.shape==(len(case['sentences']),768) and prob.shape==(len(case['sentences']),13)
+    assert np.isfinite(emb).all() and np.isfinite(prob).all()
+    temp=home.with_suffix('.partial.npz')
+    np.savez_compressed(temp,cls=emb,roles=prob,sig=SIGNATURE,doc_digest=digest,head_digest=HEAD_DIGEST)
+    temp.replace(home)
+    CACHE_STATS[f'encoded_{limit}']+=1
+    return emb.astype(np.float32),prob.astype(np.float32)
+
+# Reuse Stage 3.5/3.4/3.3 120-sentence caches where signatures match.
+for limit in SENTENCE_LIMITS:
+    for case in tqdm(CASES[limit]['train']+CASES[limit]['dev'],desc=f'{limit}-sentence embeddings, restartable'):
+        case['cls'],case['roles']=get_cached_features(case,limit)
+    print('Feature-cache statistics at',limit,':',dict(CACHE_STATS))
+print('All features ready; Stage 3.6 model training follows.')
+print('Kaggle session note: cache is resumable within this session. Save a Kaggle version and reattach the output dataset to reuse it after a reset.')
+if 'ENCODER' in globals():del ENCODER
+if 'HEAD' in globals():del HEAD
+if DEVICE.type=='cuda':torch.cuda.empty_cache()
+
+import gc
+
+def sentence_tfidf_features(sentences):
+    try:
+        vec=TfidfVectorizer(stop_words='english',ngram_range=(1,2),max_features=8000).fit_transform(sentences)
+        center=cosine_similarity(vec,np.asarray(vec.mean(axis=0)).ravel().reshape(1,-1)).ravel()
+    except ValueError:
+        vec=None;center=np.zeros(len(sentences),dtype=float)
+    return vec,center
+
+def budgeted_selection(sents,ranking,budget=SUMMARY_WORD_BUDGET,vectors=None):
+    selected=[];words=0
+    for idx in ranking:
+        i=int(idx)
+        wc=len(sents[i].split())
+        if wc<5 or wc>budget or words+wc>budget:continue
+        if vectors is not None and selected:
+            if float(cosine_similarity(vectors[i],vectors[selected]).max())>=SUMMARY_REPETITION_THRESHOLD:
+                continue
+        selected.append(i);words+=wc
+        if words>=budget:break
+    return sorted(selected)
+
+def lead_indices(sentences,budget=SUMMARY_WORD_BUDGET):
+    selected=[];count=0
+    for i,s in enumerate(sentences):
+        n=len(s.split())
+        if n<5:continue
+        if count+n>budget:break  # Keep exact Stage 3.4 Lead behavior.
+        selected.append(i);count+=n
+    return selected
+
+def tfidf_indices(case):
+    v,center=case['tfidf_features']
+    return budgeted_selection(case['sentences'],np.argsort(-center,kind='stable'),vectors=v)
+
+def create_extract(case,scores,budget=SUMMARY_WORD_BUDGET):
+    v,_=case['tfidf_features']
+    idx=budgeted_selection(case['sentences'],np.argsort(-scores,kind='stable'),budget,v)
+    return '\n'.join(case['sentences'][i] for i in idx),idx
+
+def position_features(case,with_roles):
+    n=len(case['sentences'])
+    pos=np.asarray(case['original_indices'],dtype=np.float32)[:,None]/max(1,case['original_sentence_count']-1)
+    return np.concatenate([case['cls'].astype(np.float32),pos]+
+        ([case['roles'].astype(np.float32)] if with_roles else []),axis=1)
+
+def flatten_train(train_cases,weak_method,with_roles):
+    feats=[];labels=[]
+    for case in train_cases:
+        assert 'weak_labels' in case and weak_method in case['weak_labels']
+        feats.append(position_features(case,with_roles))
+        labels.append(case['weak_labels'][weak_method].astype(np.float32))
+    return torch.from_numpy(np.concatenate(feats)),torch.from_numpy(np.concatenate(labels))
+
+class SentenceSelector(nn.Module):
+    def __init__(self,with_roles):
+        super().__init__()
+        dim=768+1+(13 if with_roles else 0)
+        self.net=nn.Sequential(nn.LayerNorm(dim),nn.Linear(dim,160),nn.ReLU(),
+                               nn.Dropout(DROPOUT),nn.Linear(160,1))
+    def forward(self,x):return self.net(x).squeeze(-1)
+
+for limit in SENTENCE_LIMITS:
+    for case in CASES[limit]['dev']:
+        case['tfidf_features']=sentence_tfidf_features(case['sentences'])
+
+@torch.no_grad()
+def predictions_for_case(model,case,with_roles):
+    model.eval()
+    arr=position_features(case,with_roles)
+    return model(torch.from_numpy(arr).to(DEVICE)).sigmoid().cpu().numpy()
+
+@torch.no_grad()
+def validation_rougeL(model,dev_cases,with_roles):
+    values=[]
+    for case in dev_cases:
+        scores=predictions_for_case(model,case,with_roles)
+        summ,_=create_extract(case,scores)
+        values.append(SCORER.score(case['reference'],summ)['rougeL'].fmeasure)
+    return float(np.mean(values))
+
+_digest=lambda values: hashlib.sha256(json.dumps(values,sort_keys=True,default=str).encode()).hexdigest()
+EXPERIMENT_SIGNATURE=_digest({'train_ids':STAGE34_TRAIN_IDS,'dev_ids':STAGE34_DEV_IDS,
+    'encoder':SIGNATURE,'head':HEAD_DIGEST,'dataset':DATASET_MD5,'seed':SEED,
+    'epochs':EPOCHS,'patience':PATIENCE,'lr':HEAD_LR,'batch':HEAD_BATCH_SIZE,
+    'dropout':DROPOUT,'budget':SUMMARY_WORD_BUDGET,
+    'teacher':'rouge-1/2 clipped ngram recall greedy marginal per words^0.35 v1',
+    'tfidf':'ngram-1/2 cosine to reference, greedy whole-sentence packing <=400 words v1',
+    'selector':'LayerNorm Linear(160) ReLU Dropout Linear(1)',
+    'selection':'TFIDF redundancy threshold 0.86'} )
+CHECKPOINT_ROOT=OUT_DIR/'model_checkpoints'
+CHECKPOINT_ROOT.mkdir(parents=True,exist_ok=True)
+
+def experiment_id(limit,weak_method,with_roles):
+    return f'L{limit}_{weak_method}_'+('roles' if with_roles else 'no_roles')
+
+def train_one_condition(limit,weak_method,with_roles):
+    name=experiment_id(limit,weak_method,with_roles)
+    train_cases=CASES[limit]['train'];dev_cases=CASES[limit]['dev']
+    dst=CHECKPOINT_ROOT/name;dst.mkdir(parents=True,exist_ok=True)
+    best_ck=dst/'best_selector.pt';done=dst/'complete.json'
+    if done.is_file() and best_ck.is_file() and not FORCE_REENCODE:
+        try:
+            info=json.loads(done.read_text())
+            payload=torch.load(best_ck,map_location='cpu',weights_only=True)
+            if info['signature']==EXPERIMENT_SIGNATURE and payload['signature']==EXPERIMENT_SIGNATURE and \
+               info['name']==name and payload['experiment']==name:
+                model=SentenceSelector(with_roles).to(DEVICE)
+                model.load_state_dict(payload['state_dict']);model.eval()
+                print('REUSED complete selector:',name,'best',round(info['val_rougeL'],4))
+                return model,pd.DataFrame(info['history']),{'model':name,'best_epoch':info['best_epoch'],
+                            'val_rougeL':info['val_rougeL'],'checkpoint':str(best_ck),'reused':True}
+        except (OSError,ValueError,KeyError,RuntimeError):pass
+    torch.manual_seed(SEED)
+    if DEVICE.type=='cuda':torch.cuda.manual_seed_all(SEED)
+    model=SentenceSelector(with_roles).to(DEVICE)
+    features,weak_y=flatten_train(train_cases,weak_method,with_roles)
+    positives=float(weak_y.sum().item()); negatives=len(weak_y)-positives
+    pos_weight=torch.tensor([min(6.,max(1.,negatives/max(1.,positives)))],device=DEVICE)
+    lossfun=nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    loader=DataLoader(TensorDataset(features,weak_y),batch_size=HEAD_BATCH_SIZE,
+                      shuffle=True,generator=torch.Generator().manual_seed(SEED))
+    opt=torch.optim.AdamW(model.parameters(),lr=HEAD_LR,weight_decay=0.01)
+    best=-1.;best_epoch=0;wait=0;history=[]
+    for epoch in range(1,EPOCHS+1):
+        model.train();total=0.;count=0
+        for xb,yb in loader:
+            xb=xb.to(DEVICE);yb=yb.to(DEVICE)
+            opt.zero_grad(set_to_none=True)
+            logits=model(xb)
+            loss=lossfun(logits,yb)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(),1.)
+            opt.step()
+            total+=float(loss.item())*len(yb);count+=len(yb)
+        val=validation_rougeL(model,dev_cases,with_roles)
+        history.append({'model':name,'epoch':epoch,'train_weak_bce':total/max(1,count),
+                        'val_rougeL':val,'positive_fraction':positives/len(weak_y)})
+        print(f'{name}: epoch={epoch:02d} train_BCE={total/max(1,count):.4f} dev_ROUGE-L={val:.4f}',flush=True)
+        if val>best+1e-5:
+            best=val;best_epoch=epoch;wait=0
+            payload={'state_dict':{k:v.detach().cpu() for k,v in model.state_dict().items()},
+                'experiment':name,'signature':EXPERIMENT_SIGNATURE,'max_sentences':limit,
+                'weak_label':weak_method,'use_roles':with_roles,'best_epoch':epoch,
+                'val_rougeL':val,'official_test_used':False}
+            tmp=best_ck.with_suffix('.temp');torch.save(payload,tmp);tmp.replace(best_ck)
+        else:
+            wait+=1
+            if wait>=PATIENCE:break
+    payload=torch.load(best_ck,map_location='cpu',weights_only=True)
+    model.load_state_dict(payload['state_dict']);model.eval()
+    meta={'name':name,'signature':EXPERIMENT_SIGNATURE,'best_epoch':best_epoch,
+          'val_rougeL':best,'history':history}
+    tmp=done.with_suffix('.partial');tmp.write_text(json.dumps(meta,indent=2));tmp.replace(done)
+    del features,weak_y,loader,opt
+    gc.collect()
+    return model,pd.DataFrame(history),{'model':name,'best_epoch':best_epoch,
+                    'val_rougeL':best,'checkpoint':str(best_ck),'reused':False}
+
+# Shape + gradient smoke tests, before any eight-model training starts.
+_dummy={'id':'fake.txt','sentences':['a b c d e','f g h i j'],
+    'original_indices':[0,1],'original_sentence_count':2,
+    'cls':np.zeros((2,768),dtype=np.float32),'roles':np.ones((2,13),dtype=np.float32)/13,
+    'weak_labels':{'tfidf':np.array([1,0],dtype=np.float32)}}
+for flag,width in [(False,769),(True,782)]:
+    x,y=flatten_train([_dummy],'tfidf',flag)
+    assert x.shape==(2,width)
+    test=SentenceSelector(flag)
+    l=nn.BCEWithLogitsLoss()(test(x),y);l.backward()
+    assert torch.isfinite(l)
+print('4-condition Stage 3.6 training code ready; shapes and gradients checked.')
+
+MODELS={};TRAINING_HISTORIES=[];BEST_CHECKPOINTS=[]
+for limit in SENTENCE_LIMITS:
+    for weak_method in WEAK_LABEL_METHODS:
+        for with_roles in ROLE_MODES:
+            name=experiment_id(limit,weak_method,with_roles)
+            print('\n===== EXPERIMENT',name,'=====',flush=True)
+            model,hist,best=train_one_condition(limit,weak_method,with_roles)
+            MODELS[name]=model
+            TRAINING_HISTORIES.append(hist)
+            BEST_CHECKPOINTS.append(best)
+            print('Completed',name,'best dev ROUGE-L:',round(best['val_rougeL'],4),flush=True)
+TRAINING_HISTORY=pd.concat(TRAINING_HISTORIES,ignore_index=True)
+BEST_MODELS=pd.DataFrame(BEST_CHECKPOINTS)
+display(BEST_MODELS[['model','best_epoch','val_rougeL','reused']].round(4))
+assert len(MODELS)==4
+
+RESULT_ROWS=[];DEV_SELECTED={};SAMPLE_EXTRACTS={}
+for limit in SENTENCE_LIMITS:
+    for case in tqdm(CASES[limit]['dev'],desc=f'{limit}-sentence development evaluation'):
+        sents=case['sentences'];cid=case['id']
+        idxs={f'L{limit}_Lead':lead_indices(sents),
+              f'L{limit}_TFIDF':tfidf_indices(case)}
+        for label in WEAK_LABEL_METHODS:
+            for role in ROLE_MODES:
+                name=experiment_id(limit,label,role)
+                predicted=predictions_for_case(MODELS[name],case,role)
+                idxs[name]=create_extract(case,predicted)[1]
+        DEV_SELECTED.setdefault(cid,{})
+        for name,indices in idxs.items():
+            text='\n'.join(sents[int(i)] for i in sorted(indices))
+            score=SCORER.score(case['reference'],text)
+            wc=len(text.split())
+            assert wc<=SUMMARY_WORD_BUDGET
+            RESULT_ROWS.append({'case_id':cid,'method':name,'limit':limit,
+                'rouge1_f1':score['rouge1'].fmeasure,'rouge2_f1':score['rouge2'].fmeasure,
+                'rougeL_f1':score['rougeL'].fmeasure,'summary_words':wc,
+                'source_sentences':len(sents),'original_sentences':case['original_sentence_count']})
+            DEV_SELECTED[cid][name]={'source_sentence_numbers_1based':
+                [case['original_indices'][int(i)]+1 for i in indices], 'summary':text}
+            if len(SAMPLE_EXTRACTS)<2:SAMPLE_EXTRACTS.setdefault(cid,{})[name]=text
+RESULTS=pd.DataFrame(RESULT_ROWS)
+assert len(RESULTS)==DEV_DOCS*(4+2)
+MEANS=RESULTS.groupby('method')[['rouge1_f1','rouge2_f1','rougeL_f1','summary_words']].agg(['mean','std','count'])
+print('Exploratory IN-Abs DEVELOPMENT results only:')
+display(MEANS.round(4))
+print('Sample summary excerpt:')
+for k,v in list(SAMPLE_EXTRACTS.items())[:1]:
+    print('Case',k,'method',next(iter(v)),':',next(iter(v.values()))[:1200])
+
+PAIRINGS=[]
+for roles in ROLE_MODES:
+    PAIRINGS.append(('matched_teacher',experiment_id(120,'greedy_rouge',roles),
+                    experiment_id(120,'tfidf_budgeted',roles)))
+for teacher in WEAK_LABEL_METHODS:
+    PAIRINGS.append(('explicit_roles',experiment_id(120,teacher,True),
+                    experiment_id(120,teacher,False)))
+for teacher in WEAK_LABEL_METHODS:
+    for roles in ROLE_MODES:
+        PAIRINGS.append(('versus_unsupervised_tfidf',experiment_id(120,teacher,roles),'L120_TFIDF'))
+PAIRED_DEV=[]
+wide=RESULTS.pivot(index='case_id',columns='method',values=['rouge1_f1','rouge2_f1','rougeL_f1'])
+assert len(wide)==40
+rng=np.random.default_rng(SEED+360)
+for metric in ['rouge1_f1','rouge2_f1','rougeL_f1']:
+    for kind,a,b in PAIRINGS:
+        diff=(wide[(metric,a)]-wide[(metric,b)]).to_numpy(float)
+        assert len(diff)==40 and np.isfinite(diff).all()
+        boot_idx=rng.integers(0,len(diff),size=(BOOTSTRAP_RESAMPLES,len(diff)))
+        lo,hi=np.percentile(diff[boot_idx].mean(axis=1),[2.5,97.5])
+        PAIRED_DEV.append({'contrast':kind,'metric':metric,'method_A':a,'method_B':b,
+            'mean_A_minus_B':float(diff.mean()),'bootstrap_95_low':float(lo),
+            'bootstrap_95_high':float(hi),'A_wins':int((diff>1e-8).sum()),
+            'B_wins':int((diff<-1e-8).sum()),'ties':int((abs(diff)<=1e-8).sum()),
+            'n_cases':len(diff),'split':'development'})
+PAIRED_STATS=pd.DataFrame(PAIRED_DEV)
+print('Exploratory matched-400-word weak-label comparisons (development only):')
+display(PAIRED_STATS[(PAIRED_STATS.contrast=='matched_teacher') &
+                     (PAIRED_STATS.metric.isin(['rouge2_f1','rougeL_f1']))].round(4))
+
+assert EXPERIMENT_STAGE=='3.6' and TRAIN_DOCS==1000 and DEV_DOCS==40
+assert len(MODELS)==4 and len(BEST_CHECKPOINTS)==4
+STAMP=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+RUN_DIR=OUT_DIR/f'inabs_stage3_6_1000train_40dev_{STAMP}'
+RUN_DIR.mkdir(parents=True,exist_ok=True)
+INPUT_STATS.to_csv(RUN_DIR/'document_length_statistics.csv',index=False)
+LABEL_REPORT.to_csv(RUN_DIR/'matched_training_weak_label_statistics.csv',index=False)
+RESULTS.to_csv(RUN_DIR/'development_per_case_rouge.csv',index=False)
+MEANS.to_csv(RUN_DIR/'development_method_summary.csv')
+PAIRED_STATS.to_csv(RUN_DIR/'paired_bootstrap_development.csv',index=False)
+TRAINING_HISTORY.to_csv(RUN_DIR/'training_history.csv',index=False)
+BEST_MODELS.to_csv(RUN_DIR/'checkpoint_summary.csv',index=False)
+pd.DataFrame(excluded,columns=['split','id','reason']).to_csv(RUN_DIR/'inext_overlap_audit.csv',index=False)
+UNMATCHED_DATASET_FILES.to_csv(RUN_DIR/'unmatched_inabs_files.csv',index=False)
+(RUN_DIR/'development_selected_sentences_and_summaries.json').write_text(
+    json.dumps(DEV_SELECTED,ensure_ascii=False,indent=2),encoding='utf-8')
+CONFIG={'stage':EXPERIMENT_STAGE,'train_docs':TRAIN_DOCS,'dev_docs':DEV_DOCS,
+    'train_ids':STAGE34_TRAIN_IDS,'dev_ids':STAGE34_DEV_IDS,
+    'sentence_limit':120,'budget_words':400,
+    'weak_label_methods':list(WEAK_LABEL_METHODS),'role_modes':list(ROLE_MODES),
+    'model_count':4,'cache_stats':dict(CACHE_STATS),'seed':SEED,
+    'dataset_md5':DATASET_MD5,'encoder_signature':SIGNATURE,'head_zip_digest':HEAD_DIGEST,
+    'experiment_signature':EXPERIMENT_SIGNATURE,'epochs':EPOCHS,'patience':PATIENCE,
+    'official_inabs_test_used_in_training_or_tuning':False,
+    'inext_reference_summaries_used':False,
+    'test_reference_summary_used_only_for_final_evaluation':True,
+    'budget_matched_training_labels':True,
+    'dev_cases_repeatedly_used_in_previous_stages':True,
+    'dev_bootstrap_intervals_exploratory':True,
+    'predeclared_final_models':[row['model'] for row in BEST_CHECKPOINTS],
+    'checkpoints':BEST_CHECKPOINTS}
+(RUN_DIR/'run_manifest.json').write_text(json.dumps(CONFIG,indent=2),encoding='utf-8')
+for row in BEST_CHECKPOINTS:
+    shutil.copyfile(row['checkpoint'],RUN_DIR/(row['model']+'_best.pt'))
+print('Frozen Stage 3.6 development artifacts:',RUN_DIR)
+print('The next cell is the ONLY code allowed to read the official IN-Abs test references.')
+
+# Official test: checkpoint fingerprint lock, document-level resume, and one-time analysis.
+import gc
+FINAL_METHODS=['L120_Lead','L120_TFIDF'] + [experiment_id(120,t,r) for t in WEAK_LABEL_METHODS for r in ROLE_MODES]
+assert len(FINAL_METHODS)==6 and len(set(FINAL_METHODS))==6
+assert all((RUN_DIR/(name+'_best.pt')).is_file() for name in FINAL_METHODS[2:])
+
+def full_sha256(path):
+    hasher=hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for chunk in iter(lambda:f.read(4*1024*1024),b''):hasher.update(chunk)
+    return hasher.hexdigest()
+
+FROZEN_HASHES={name:full_sha256(RUN_DIR/(name+'_best.pt')) for name in FINAL_METHODS[2:]}
+FROZEN_ID=_digest({'experiment_signature':EXPERIMENT_SIGNATURE,'stage':'3.6',
+    'test_protocol':'frozen_4_models_plus_2_baselines_120s_400words_v1',
+    'dataset_md5':DATASET_MD5,'checkpoints':FROZEN_HASHES,'methods':FINAL_METHODS})
+TEST_LOCK_PATH=OUT_DIR/'official_inabs_test_frozen.lock.json'
+# Kaggle /kaggle/working is session-local. Do not silently rerun an earlier
+# official test whose lock was saved and reattached as an input Dataset.
+EXTERNAL_LOCKS=[p for p in INPUT_ROOT.rglob('official_inabs_test_frozen.lock.json')]
+if RUN_OFFICIAL_TEST and EXTERNAL_LOCKS and not TEST_LOCK_PATH.exists():
+    raise RuntimeError('An earlier official IN-Abs test lock was found in Kaggle inputs: '
+                       +str(EXTERNAL_LOCKS[0])+'. Do not rerun/retune the held-out test. '
+                       'Use the saved results from that run.')
+if RUN_OFFICIAL_TEST:
+    if TEST_LOCK_PATH.is_file():
+        prior=json.loads(TEST_LOCK_PATH.read_text(encoding='utf-8'))
+        if prior['frozen_id']!=FROZEN_ID:
+            raise RuntimeError('OFFICIAL TEST WAS ALREADY FROZEN WITH DIFFERENT MODELS. '
+                'Do not retune on this held-out test. Keep the first evaluation as final.')
+        TEST_RUN_DIR=Path(prior['run_dir'])
+        print('Existing official test lock verified. Reusing original run:',TEST_RUN_DIR)
+    else:
+        TEST_RUN_DIR=RUN_DIR
+        lock={'frozen_id':FROZEN_ID,'run_dir':str(TEST_RUN_DIR),
+              'model_hashes':FROZEN_HASHES,'experiment_signature':EXPERIMENT_SIGNATURE,
+              'dataset_md5':DATASET_MD5,'methods':FINAL_METHODS,
+              'created_utc':datetime.now(timezone.utc).isoformat()}
+        temporary=TEST_LOCK_PATH.with_suffix('.partial')
+        temporary.write_text(json.dumps(lock,indent=2),encoding='utf-8')
+        temporary.replace(TEST_LOCK_PATH)
+        print('Official test protocol FROZEN for this experiment.')
+    TEST_RUN_DIR.mkdir(parents=True,exist_ok=True)
+    TEST_PROGRESS=TEST_RUN_DIR/'official_test_progress.jsonl'
+    TEST_FINISHED=TEST_RUN_DIR/'official_test_per_case_rouge.csv'
+
+    # Assert against leakage before reading any held-out case body/reference.
+    test_ids=[r['id'] for r in PAIRS['test']]
+    assert len(test_ids)==len(set(test_ids))==100
+    assert set(test_ids).isdisjoint(STAGE34_TRAIN_IDS)
+    assert set(test_ids).isdisjoint(STAGE34_DEV_IDS)
+    assert not any(x['split']=='test' for x in excluded), 'Test/IN-Ext overlap detected; blocked.'
+
+    existing={}
+    if TEST_PROGRESS.exists():
+        for line in TEST_PROGRESS.read_text(encoding='utf-8').splitlines():
+            if line.strip():
+                item=json.loads(line)
+                assert item['case_id'] in test_ids and len(item['scores'])==6
+                existing[item['case_id']]=item
+    if TEST_FINISHED.is_file():
+        print('Official 100-case evaluation already completed; loading saved results without re-running.')
+        TEST_RESULTS=pd.read_csv(TEST_FINISHED)
+        assert len(TEST_RESULTS)==600
+    else:
+        # Recreate inference-only checkpoint components; training already completed.
+        if 'ENCODER' not in globals():
+            ENCODER=AutoModelForSequenceClassification.from_pretrained(
+                str(CHECKPOINT_DIR),local_files_only=True).to(DEVICE).eval()
+            assert [ENCODER.config.id2label[i] for i in range(13)]==LABELS
+            for p in ENCODER.parameters():p.requires_grad_(False)
+        if 'HEAD' not in globals():
+            HEAD=SentenceBiLSTM(hidden=CFG['hidden_size'],dropout=CFG['dropout']).to(DEVICE)
+            HEAD.load_state_dict(saved['bilstm'],strict=True)
+            HEAD.eval()
+        assert ENCODER.training is False and HEAD.training is False
+
+        print('Official test cases completed in previous interrupted attempts:',len(existing),'/100')
+        with zipfile.ZipFile(dataset_zip) as z:
+            for row in tqdm(PAIRS['test'],desc='One-time OFFICIAL TEST predictions (resumable)'):
+                cid=row['id']
+                if cid in existing:continue
+                # The reference is read here for scoring ONLY, and is not placed in `case`.
+                raw_judgment=clean_text(z.read(row['judgment_path']))
+                all_sents=split_sentences(raw_judgment)
+                if len(all_sents)<5:raise ValueError('Too few test sentences for '+cid)
+                chosen=select_window_indices(len(all_sents),120)
+                case={'id':cid,'sentences':[all_sents[i] for i in chosen],
+                      'original_indices':chosen,'original_sentence_count':len(all_sents)}
+                case['cls'],case['roles']=get_cached_features(case,120)
+                case['tfidf_features']=sentence_tfidf_features(case['sentences'])
+                predictions={'L120_Lead':lead_indices(case['sentences']),
+                             'L120_TFIDF':tfidf_indices(case)}
+                for teacher in WEAK_LABEL_METHODS:
+                    for role in ROLE_MODES:
+                        name=experiment_id(120,teacher,role)
+                        predictions[name]=create_extract(case,
+                             predictions_for_case(MODELS[name],case,role))[1]
+                assert set(predictions)==set(FINAL_METHODS)
+                # Only NOW read the human reference to calculate ROUGE.
+                reference=clean_text(z.read(row['summary_path']))
+                scores=[];summaries={}
+                for name in FINAL_METHODS:
+                    indices=predictions[name]
+                    text='\n'.join(case['sentences'][int(i)] for i in sorted(indices))
+                    assert len(text.split())<=400
+                    score=SCORER.score(reference,text)
+                    scores.append({'case_id':cid,'method':name,'split':'official_test',
+                        'rouge1_f1':float(score['rouge1'].fmeasure),
+                        'rouge2_f1':float(score['rouge2'].fmeasure),
+                        'rougeL_f1':float(score['rougeL'].fmeasure),
+                        'summary_words':len(text.split()),
+                        'candidate_sentences':len(case['sentences']),
+                        'original_sentences':len(all_sents)})
+                    # Preserve outputs for non-ROUGE human factual review.
+                    summaries[name]={'summary':text,'source_sentence_numbers_1based':[
+                        int(chosen[int(i)]+1) for i in sorted(indices)]}
+                entry={'case_id':cid,'scores':scores,'summaries':summaries}
+                with TEST_PROGRESS.open('a',encoding='utf-8') as f:
+                    f.write(json.dumps(entry,ensure_ascii=False)+'\n')
+                existing[cid]=entry
+                del case
+        assert len(existing)==100, 'The test run is incomplete; rerun all cells to resume safely.'
+        TEST_RESULTS=pd.DataFrame([v for item in existing.values() for v in item['scores']])
+        assert len(TEST_RESULTS)==600
+        assert TEST_RESULTS.groupby('method').size().eq(100).all()
+        TEST_RESULTS.to_csv(TEST_FINISHED,index=False)
+
+    TEST_MEANS=TEST_RESULTS.groupby('method')[
+        ['rouge1_f1','rouge2_f1','rougeL_f1','summary_words']].agg(['mean','std','count'])
+    display(TEST_MEANS.round(4))
+    TEST_MEANS.to_csv(TEST_RUN_DIR/'official_test_method_summary.csv')
+
+    PAIRINGS_TEST=[('matched_teacher',experiment_id(120,'greedy_rouge',roles),
+                    experiment_id(120,'tfidf_budgeted',roles)) for roles in ROLE_MODES]
+    PAIRINGS_TEST += [('explicit_roles',experiment_id(120,t,True),
+                      experiment_id(120,t,False)) for t in WEAK_LABEL_METHODS]
+    PAIRINGS_TEST += [('versus_tfidf_baseline',experiment_id(120,t,r),'L120_TFIDF')
+                      for t in WEAK_LABEL_METHODS for r in ROLE_MODES]
+    PAIRINGS_TEST += [('versus_lead_baseline',experiment_id(120,t,r),'L120_Lead')
+                      for t in WEAK_LABEL_METHODS for r in ROLE_MODES]
+    scores_wide=TEST_RESULTS.pivot(index='case_id',columns='method',
+                         values=['rouge1_f1','rouge2_f1','rougeL_f1'])
+    assert len(scores_wide)==100
+    rng=np.random.default_rng(SEED+361)
+    tests=[]
+    for metric in ['rouge1_f1','rouge2_f1','rougeL_f1']:
+        for kind,a,b in PAIRINGS_TEST:
+            diff=(scores_wide[(metric,a)]-scores_wide[(metric,b)]).to_numpy(float)
+            assert len(diff)==100 and np.isfinite(diff).all()
+            draws=rng.integers(0,100,size=(BOOTSTRAP_RESAMPLES,100))
+            lo,hi=np.percentile(diff[draws].mean(axis=1),[2.5,97.5])
+            tests.append({'contrast':kind,'metric':metric,'method_A':a,'method_B':b,
+                'mean_A_minus_B':float(diff.mean()),'bootstrap_95_low':float(lo),
+                'bootstrap_95_high':float(hi),
+                'A_wins':int((diff>1e-8).sum()),'B_wins':int((diff<-1e-8).sum()),
+                'ties':int((abs(diff)<=1e-8).sum()),'n_cases':100,'split':'official_test'})
+    TEST_PAIRED=pd.DataFrame(tests)
+    TEST_PAIRED.to_csv(TEST_RUN_DIR/'official_test_paired_bootstrap.csv',index=False)
+    display(TEST_PAIRED[(TEST_PAIRED.metric.isin(['rouge2_f1','rougeL_f1'])) &
+                        (TEST_PAIRED.contrast.isin(['matched_teacher','explicit_roles']))].round(4))
+
+    # Use a fixed sample chosen by case ID, not model performance, for human review.
+    review_ids=sorted(test_ids)[:10]
+    rows=[]
+    for cid in review_ids:
+        for name in FINAL_METHODS:
+            rows.append({'case_id':cid,'method':name,'factual_accuracy_1to5':'',
+                'issues_covered_1to5':'','reasoning_covered_1to5':'',
+                'final_decision_covered_1to5':'','redundancy_1to5':'',
+                'unsupported_or_misleading_claims':'','notes':''})
+    pd.DataFrame(rows).to_csv(TEST_RUN_DIR/'manual_legal_quality_review_template.csv',index=False)
+    (TEST_RUN_DIR/'official_test_summary_samples.json').write_text(
+        json.dumps({cid:existing[cid]['summaries'] for cid in review_ids},
+                   ensure_ascii=False,indent=2),encoding='utf-8')
+    FINAL_SUMMARY={'stage':'3.6','test_cases':100,'methods':FINAL_METHODS,
+        'frozen_protocol_id':FROZEN_ID,'test_references_only_used_for_final_rouge':True,
+        'checkpoint_hashes':FROZEN_HASHES,'train_case_count':1000,'dev_case_count':40,
+        'official_test_evaluations_permitted':1,
+        'test_evaluation_not_used_for_model_selection':True,
+        'timestamp_utc':datetime.now(timezone.utc).isoformat()}
+    (TEST_RUN_DIR/'OFFICIAL_TEST_COMPLETE.json').write_text(
+        json.dumps(FINAL_SUMMARY,indent=2),encoding='utf-8')
+    print('OFFICIAL TEST COMPLETE. Freeze results; do not tune on this split.')
+else:
+    print('Official test disabled. Set RUN_OFFICIAL_TEST=True ONLY when you are ready to freeze.')
+
+# Export results through Kaggle's working directory; no google.colab imports.
+EXPORT_DIR=TEST_RUN_DIR if RUN_OFFICIAL_TEST else RUN_DIR
+assert EXPORT_DIR.is_dir()
+RESULT_ZIP=WORK_ROOT/'stage3_6_inabs_fair_label_final_results.zip'
+with zipfile.ZipFile(RESULT_ZIP,'w',compression=zipfile.ZIP_DEFLATED) as z:
+    for file in sorted(EXPORT_DIR.iterdir()):
+        if file.is_file() and file.name!='official_test_progress.jsonl':
+            z.write(file,arcname=file.name)
+    # Include the one-time test lock in the exported ZIP for reproducibility.
+    lock=OUT_DIR/'official_inabs_test_frozen.lock.json'
+    if lock.is_file():z.write(lock,arcname=lock.name)
+print('Stage 3.6 results saved at:',EXPORT_DIR)
+print('Kaggle output ZIP:',RESULT_ZIP,'MB:',round(RESULT_ZIP.stat().st_size/1024**2,2))
+print('Official 100-case test complete:',(EXPORT_DIR/'OFFICIAL_TEST_COMPLETE.json').is_file())
+from IPython.display import FileLink,display
+print('Click this link to download your output ZIP:')
+display(FileLink(str(RESULT_ZIP)))

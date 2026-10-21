@@ -1,0 +1,15 @@
+{
+  "repo": "opennyaiorg/InRhetoricalRoles",
+  "revision": "fc6664bae469e6c47acf253704622d593dc7465e",
+  "files": {
+    "train": [
+      "data/train-00000-of-00001-bb0092e0d8549337.parquet"
+    ],
+    "dev": [
+      "data/dev-00000-of-00001-af55705c75623915.parquet"
+    ],
+    "test": [
+      "data/test-00000-of-00001-2526ab833e27e0ee.parquet"
+    ]
+  }
+}

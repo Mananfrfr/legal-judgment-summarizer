@@ -1,0 +1,416 @@
+# Historical source export for reference. Do not run blindly: original Drive paths and training flags remain.
+# Use the four notebooks for the supported workflow. Outputs and credentials removed.
+# Notebook-only setup: %pip -q install "transformers==4.57.6" "huggingface-hub==0.36.2" "safetensors>=0.4" "PyMuPDF>=1.24" "spacy>=3.7,<4" "rouge-score>=0.1.2" "scikit-learn>=1.4" "pandas>=2"
+
+import json, re, os, hashlib, zipfile, math
+from pathlib import Path
+from datetime import datetime, timezone
+import numpy as np
+import pandas as pd
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
+import fitz
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
+from IPython.display import display, Markdown
+
+print('PyTorch:',torch.__version__,'device:',torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+print('No model training or HF dataset authentication is required for this notebook.')
+
+from google.colab import drive
+# A single Drive authorization flow; no extra google.colab.auth.authenticate_user()
+drive.mount('/content/drive')
+DRIVE=Path('/content/drive/MyDrive')
+if not DRIVE.is_dir(): DRIVE=Path('/content/drive/My Drive')
+assert DRIVE.is_dir(), 'Cannot locate My Drive after mounting.'
+
+# Change these ONLY if files live elsewhere in this account:
+STAGE22_FOLDER_OVERRIDE = ''  # folder containing context256/, not best_checkpoint/
+STAGE23_HEAD_ZIP_OVERRIDE = '' # full path to our small stage2_3_bilstm_head_bundle.zip
+STAGE22_SHARED_FOLDER_ID='1_scAoDepjECZBTPYSWTe-xntTU68HYXj'
+
+# Stage 2.3 head bundle is small (~3.4 MB). Other Google accounts do not
+# automatically mount files from an account's "Shared with me" section.
+# This recovery is interactive ONLY if a suitable ZIP cannot already be found.
+asset_name = 'stage2_3_bilstm_head_bundle.zip'
+HEAD_BACKUP_DIR = DRIVE/'Colab Notebooks'/'Stage3 Assets'
+asset_candidates = [
+    HEAD_BACKUP_DIR/asset_name,
+    DRIVE/'Stage3 Assets'/asset_name,
+    DRIVE/asset_name,
+    Path('/content')/asset_name,
+]
+if STAGE23_HEAD_ZIP_OVERRIDE.strip():
+    asset_candidates.insert(0, Path(STAGE23_HEAD_ZIP_OVERRIDE).expanduser())
+
+REQUIRED_HEAD_FILES = {'bilstm_softmax/head_config.json', 'bilstm_softmax/best_head.pt'}
+
+def valid_head_bundle(path):
+    # Verify that the file is not an unrelated results ZIP or an incomplete download.
+    try:
+        with zipfile.ZipFile(path) as z:
+            return REQUIRED_HEAD_FILES.issubset(set(z.namelist())) and z.testzip() is None
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return False
+
+HEAD_ZIP = next((p for p in asset_candidates if p.is_file() and valid_head_bundle(p)), None)
+if HEAD_ZIP is None:
+    print('The trained Stage 2.3 BiLSTM head ZIP was not found in this account.')
+    print('Open the source file in Google Drive, download it to your computer:')
+    print('https://drive.google.com/file/d/1ZlBeH_aiyQxAuRZj4xouEeArL3NQVat7/view')
+    print('Then choose that ZIP in the upload dialog opening below.')
+    print('This is NOT the Stage 2.3 research-results ZIP; upload the HEAD BUNDLE ZIP.')
+    from google.colab import files as colab_files
+    uploaded = colab_files.upload()  # only called when no valid saved ZIP exists
+    if not uploaded:
+        raise FileNotFoundError('Upload canceled; cannot load a trained BiLSTM head.')
+    head_bytes = None
+    # Permit a renamed downloaded file as long as the actual contents are correct.
+    for filename, payload in uploaded.items():
+        if not filename.lower().endswith('.zip'):
+            continue
+        import io
+        with zipfile.ZipFile(io.BytesIO(payload)) as z:
+            if REQUIRED_HEAD_FILES.issubset(set(z.namelist())) and z.testzip() is None:
+                head_bytes = payload
+                break
+    if head_bytes is None:
+        raise ValueError('The uploaded file is not the saved Stage 2.3 BiLSTM head bundle. '
+                         'Download the HEAD BUNDLE ZIP from the link above and retry.')
+    HEAD_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    temp_path = HEAD_BACKUP_DIR/(asset_name+'.partial')
+    temp_path.write_bytes(head_bytes)
+    target_path = HEAD_BACKUP_DIR/asset_name
+    temp_path.replace(target_path)  # atomic save after verification
+    HEAD_ZIP = target_path
+    print('Saved trained head ZIP for future sessions at:', HEAD_ZIP)
+else:
+    print('Found and verified trained head bundle:', HEAD_ZIP)
+
+stage22_name='legal_summarizer_stage2_2_artifacts'
+root_candidates=[DRIVE/stage22_name]
+for shortcut_base in ('.shortcut-targets-by-id','.shortcut-targets-byid'):
+    root_candidates += [
+      Path('/content/drive')/shortcut_base/STAGE22_SHARED_FOLDER_ID/stage22_name,
+      Path('/content/drive')/shortcut_base/STAGE22_SHARED_FOLDER_ID,
+      DRIVE/shortcut_base/STAGE22_SHARED_FOLDER_ID/stage22_name,
+      DRIVE/shortcut_base/STAGE22_SHARED_FOLDER_ID,
+    ]
+if STAGE22_FOLDER_OVERRIDE.strip(): root_candidates.insert(0,Path(STAGE22_FOLDER_OVERRIDE))
+REQUIRED_ENCODER=['config.json','tokenizer.json','model.safetensors']
+CHECKPOINT_DIR=next((x/'context256'/'best_checkpoint' for x in root_candidates
+                     if all((x/'context256'/'best_checkpoint'/name).is_file() for name in REQUIRED_ENCODER)),None)
+if CHECKPOINT_DIR is None:
+    raise FileNotFoundError('Cannot find fine-tuned Stage 2.2 context checkpoint. '
+        'Add the shared Stage 2.2 folder shortcut to MyDrive, or set STAGE22_FOLDER_OVERRIDE. '
+        'The saved source folder: https://drive.google.com/drive/folders/'+STAGE22_SHARED_FOLDER_ID)
+
+OUT_DIR=DRIVE/'legal_summarizer_stage3_outputs'
+OUT_DIR.mkdir(parents=True,exist_ok=True)
+print('Fine-tuned encoder:',CHECKPOINT_DIR)
+print('Trained BiLSTM bundle:',HEAD_ZIP)
+print('Summaries will be saved under:',OUT_DIR)
+
+def checkpoint_signature(path):
+    h=hashlib.sha256()
+    for name in ('config.json','tokenizer.json','model.safetensors'):
+        p=Path(path)/name
+        if not p.is_file(): raise FileNotFoundError(p)
+        h.update(name.encode());h.update(str(p.stat().st_size).encode())
+        with p.open('rb') as f:
+            h.update(f.read(128*1024))
+            if p.stat().st_size>128*1024:
+                f.seek(-128*1024,2);h.update(f.read(128*1024))
+    return h.hexdigest()
+
+with zipfile.ZipFile(HEAD_ZIP) as z:
+    required=['bilstm_softmax/head_config.json','bilstm_softmax/best_head.pt']
+    if not all(n in z.namelist() for n in required):
+        raise ValueError('Invalid Stage 2.3 bundle; missing trained head or configuration')
+    head_config=json.loads(z.read(required[0]))
+    weights_data=z.read(required[1])
+
+SIGNATURE=checkpoint_signature(CHECKPOINT_DIR)
+if head_config['feature_checkpoint_signature'] != SIGNATURE:
+    raise RuntimeError('Stage 2.3 head was trained using a DIFFERENT encoder checkpoint. '
+                       'Do not combine these weights. Check the Stage 2.2 folder you mounted.')
+
+import io
+saved=torch.load(io.BytesIO(weights_data),map_location='cpu',weights_only=True)
+assert saved['feature_signature']==SIGNATURE
+assert saved['crf'] is None and head_config['use_crf'] is False
+CFG=head_config['cfg']
+LABELS=['ANALYSIS','ARG_PETITIONER','ARG_RESPONDENT','FAC','ISSUE','NONE','PREAMBLE',
+        'PRE_NOT_RELIED','PRE_RELIED','RATIO','RLC','RPC','STA']
+
+class SentenceBiLSTM(nn.Module):
+    # Exactly the same architecture as saved Stage 2.3 Softmax head
+    def __init__(self,in_dim=768,n_labels=13,hidden=128,dropout=0.3):
+        super().__init__()
+        self.norm=nn.LayerNorm(in_dim)
+        self.drop=nn.Dropout(dropout)
+        self.lstm=nn.LSTM(in_dim,hidden,num_layers=1,batch_first=True,bidirectional=True)
+        self.classifier=nn.Linear(hidden*2,n_labels)
+    def forward(self,x,lengths):
+        x=self.drop(self.norm(x))
+        packed=nn.utils.rnn.pack_padded_sequence(x,lengths.cpu(),batch_first=True,enforce_sorted=False)
+        packed_out,_=self.lstm(packed)
+        output,_=nn.utils.rnn.pad_packed_sequence(packed_out,batch_first=True,total_length=x.shape[1])
+        return self.classifier(self.drop(output))
+
+DEVICE=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+HEAD=SentenceBiLSTM(hidden=CFG['hidden_size'],dropout=CFG['dropout']).to(DEVICE)
+HEAD.load_state_dict(saved['bilstm'],strict=True)
+HEAD.eval()
+print('Loaded Stage 2.3 Softmax BiLSTM, trained best epoch',saved['epoch'])
+print('Checkpoint fingerprint MATCHED:',SIGNATURE[:16]+'...')
+
+TOKENIZER=AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR),use_fast=True,local_files_only=True)
+MARK_PREV=TOKENIZER.encode('PREVIOUS:',add_special_tokens=False)
+MARK_NEXT=TOKENIZER.encode('NEXT:',add_special_tokens=False)
+ENCODER=AutoModelForSequenceClassification.from_pretrained(str(CHECKPOINT_DIR),local_files_only=True).to(DEVICE).eval()
+assert ENCODER.config.num_labels==13
+assert [ENCODER.config.id2label[i] for i in range(13)]==LABELS
+for p in ENCODER.parameters():p.requires_grad_(False)
+COLLATOR=DataCollatorWithPadding(tokenizer=TOKENIZER,return_tensors='pt')
+
+def pack_context_ids(target_ids,previous_ids,next_ids,max_length=256,target_cap=192):
+    tgt=list(target_ids[:min(target_cap,max_length-3)])
+    budget=max_length-len(tgt)-3
+    pmark=MARK_PREV if previous_ids else []
+    nmark=MARK_NEXT if next_ids else []
+    free=budget-len(pmark)-len(nmark)
+    if free<0: raise ValueError('No token budget for context markers')
+    prev_cap=min(len(previous_ids),(free+1)//2) if previous_ids else 0
+    next_cap=min(len(next_ids),free//2) if next_ids else 0
+    left=free-prev_cap-next_cap
+    prev_cap+=min(len(previous_ids)-prev_cap,left)
+    left=free-prev_cap-next_cap
+    next_cap+=min(len(next_ids)-next_cap,left)
+    prev_part=list(previous_ids[-prev_cap:]) if prev_cap else []
+    next_part=list(next_ids[:next_cap]) if next_cap else []
+    context=pmark+prev_part+nmark+next_part
+    ids=[TOKENIZER.cls_token_id]+tgt+[TOKENIZER.sep_token_id]+context+[TOKENIZER.sep_token_id]
+    segment0=len(tgt)+2
+    item={'input_ids':ids,'attention_mask':[1]*len(ids),
+          'token_type_ids':[0]*segment0+[1]*(len(ids)-segment0)}
+    assert len(ids)<=max_length
+    return item
+
+# Verify the context packing exactly respects the Stage 2.3 settings.
+assert CFG['max_length']==256 and CFG['max_target_context']==192
+assert len(pack_context_ids(list(range(500)),list(range(300)),list(range(300)))['input_ids'])<=256
+print('Stage 2.3 context format reconstructed successfully.')
+
+# SET THIS TO 'upload' for your own judgment, or 'path' for an existing Colab/Drive file.
+INPUT_SOURCE='demo'  # 'demo', 'upload', 'path'
+INPUT_PATH=''         # used if INPUT_SOURCE='path'
+MAX_SENTENCES=900    # fail safely rather than silently drop the end of a long judgment
+
+DEMO_TEXT='IN THE HIGH COURT OF DELHI. Asha Mehta versus State of Delhi. Judgment delivered by the Court. The petitioner challenged the administrative order dated 5 May 2024. The order cancelled her professional licence without providing her a hearing. She filed an appeal before the relevant authority, but the authority declined to intervene. The primary issue is whether the cancellation violated the principles of natural justice. Counsel for the petitioner argued that the licensing authority was required to give notice and a fair hearing. The petitioner further submitted that the order contained no reasons and caused serious prejudice. Counsel for the respondent argued that urgent public safety concerns justified immediate cancellation. The respondent maintained that a post-decisional hearing was sufficient. The Court has considered the arguments of both parties. The record does not disclose any notice given to the petitioner before the licence was cancelled. The opportunity to be heard is a fundamental aspect of natural justice. An administrative decision affecting civil rights generally requires adequate notice and reasons. The respondent has not shown exceptional circumstances warranting a departure from these principles. The court therefore holds that the challenged order cannot be sustained. Accordingly, the petition is allowed and the cancellation order is set aside. The licensing authority shall reconsider the matter after granting a reasonable hearing. There shall be no order as to costs.'
+
+def extract_text(file_path):
+    file_path=Path(file_path)
+    if file_path.suffix.lower()=='.txt':
+        try: return file_path.read_text(encoding='utf-8')
+        except UnicodeDecodeError: return file_path.read_text(encoding='latin-1')
+    if file_path.suffix.lower()=='.pdf':
+        with fitz.open(str(file_path)) as pdf:
+            return '\n'.join(page.get_text('text',sort=True) for page in pdf)
+    raise ValueError('Please upload a .pdf or .txt judgment.')
+
+if INPUT_SOURCE=='demo':
+    raw_text=DEMO_TEXT
+    SOURCE_NAME='synthetic_demo.txt'
+elif INPUT_SOURCE=='path':
+    if not INPUT_PATH.strip():raise ValueError('Set INPUT_PATH to a .pdf or .txt')
+    raw_text=extract_text(INPUT_PATH)
+    SOURCE_NAME=Path(INPUT_PATH).name
+elif INPUT_SOURCE=='upload':
+    from google.colab import files
+    uploaded=files.upload()
+    if len(uploaded)!=1:raise ValueError('Upload ONE judgment (.pdf or .txt).')
+    SOURCE_NAME=next(iter(uploaded))
+    raw_text=extract_text('/content/'+SOURCE_NAME)
+else:
+    raise ValueError('INPUT_SOURCE must be demo, upload, or path')
+
+if len(raw_text.strip())<150:
+    raise ValueError('Too little selectable text. For scanned PDFs, OCR is needed.')
+print('Input:',SOURCE_NAME,'| characters:',len(raw_text))
+
+NLP=spacy.blank('en')
+NLP.add_pipe('sentencizer')
+NLP.max_length=max(NLP.max_length,len(raw_text)+100)
+
+def normalize_for_segmentation(text):
+    text=text.replace('\u00ad','')
+    text=re.sub(r'(?<=\w)-\s*\n\s*(?=\w)','',text)
+    text=re.sub(r'\s*\n\s*',' ',text)
+    text=re.sub(r'[\t ]+',' ',text)
+    return text.strip()
+
+normalized=normalize_for_segmentation(raw_text)
+spacy_doc=NLP(normalized)
+sentences=[]
+for sent in spacy_doc.sents:
+    s=sent.text.strip()
+    if s and re.search(r'[A-Za-z]',s):
+        sentences.append(s)
+if len(sentences)<3:raise RuntimeError('Only '+str(len(sentences))+' sentences detected. Check PDF extraction.')
+if len(sentences)>MAX_SENTENCES:
+    raise RuntimeError(f'{len(sentences)} sentences exceeds MAX_SENTENCES={MAX_SENTENCES}; '
+       'increase the limit only if memory allows. No sentences have been silently dropped.')
+
+FR=pd.DataFrame({'sid':[f'S{i:04d}' for i in range(1,len(sentences)+1)],
+                 'sentence_index':np.arange(len(sentences)),
+                 'text':sentences})
+print('Sentence count:',len(FR))
+display(FR[['sid','text']].head(8))
+
+@torch.inference_mode()
+def predict_roles(sentences,batch_size=8):
+    encoded_tokens=TOKENIZER(sentences,add_special_tokens=False,padding=False,
+                             return_attention_mask=False)['input_ids']
+    packed=[]
+    for i,ids in enumerate(encoded_tokens):
+        before=encoded_tokens[i-1] if i else []
+        after=encoded_tokens[i+1] if i+1<len(encoded_tokens) else []
+        packed.append(pack_context_ids(ids,before,after,
+                                      max_length=CFG['max_length'],
+                                      target_cap=CFG['max_target_context']))
+    all_features=[]
+    from tqdm.auto import tqdm
+    for start in tqdm(range(0,len(packed),batch_size),desc='Encode sentences'):
+        batch=COLLATOR(packed[start:start+batch_size])
+        inputs={k:v.to(DEVICE) for k,v in batch.items()}
+        with torch.amp.autocast(device_type='cuda',enabled=(DEVICE.type=='cuda')):
+            cls=ENCODER.base_model(**inputs,return_dict=True).last_hidden_state[:,0,:]
+        # Original Stage 2.3 encoder saved float16 embeddings before loading the BiLSTM.
+        all_features.append(cls.float().cpu().to(torch.float16))
+    features=torch.cat(all_features,dim=0).float().unsqueeze(0).to(DEVICE)
+    lengths=torch.tensor([len(sentences)],dtype=torch.long)
+    logits=HEAD(features,lengths)[0].float()
+    probs=torch.softmax(logits,dim=-1).cpu().numpy()
+    role_idx=probs.argmax(axis=1)
+    return role_idx,probs
+
+pred_ids,PRED_PROBS=predict_roles(FR.text.tolist(),batch_size=8 if DEVICE.type=='cpu' else 16)
+FR['role']=[LABELS[int(i)] for i in pred_ids]
+FR['role_probability']=np.max(PRED_PROBS,axis=1)
+assert len(FR)==len(PRED_PROBS)
+print('Rhetorical-role counts (predicted):')
+display(FR.role.value_counts().rename_axis('role').reset_index(name='sentences'))
+print('Note: softmax probabilities are not calibrated confidence estimates.')
+
+SECTION_ROLES={
+    'Key facts': {'FAC'},
+    'Legal issues': {'ISSUE'},
+    "Petitioner's arguments": {'ARG_PETITIONER'},
+    "Respondent's arguments": {'ARG_RESPONDENT'},
+    'Earlier court ruling': {'RLC'},
+    'Court reasoning and legal principles': {'ANALYSIS','RATIO','PRE_RELIED','STA'},
+    'Final ruling (present court)': {'RPC'},
+}
+SECTION_QUOTAS={
+    'Key facts':3,'Legal issues':2,"Petitioner's arguments":2,
+    "Respondent's arguments":2,'Earlier court ruling':1,
+    'Court reasoning and legal principles':4,'Final ruling (present court)':3,
+}
+# Choose decisive material first, but display in a logical reading order.
+SELECTION_ORDER=['Final ruling (present court)','Legal issues','Key facts',
+                 'Court reasoning and legal principles',"Petitioner's arguments",
+                 "Respondent's arguments",'Earlier court ruling']
+MAX_SUMMARY_WORDS=430
+REDUNDANCY_THRESHOLD=0.88
+
+def score_document_sentences(frame):
+    texts=frame.text.astype(str).tolist()
+    try:
+        vectors=TfidfVectorizer(stop_words='english',ngram_range=(1,2),max_features=6000).fit_transform(texts)
+        centroid=np.asarray(vectors.mean(axis=0)).ravel().reshape(1,-1)
+        centrality=cosine_similarity(vectors,centroid).ravel()
+        sim=cosine_similarity(vectors)
+    except ValueError:
+        centrality=np.zeros(len(texts));sim=np.eye(len(texts))
+    centrality=centrality/(centrality.max()+1e-8)
+    result=frame.copy()
+    result['centrality']=centrality
+    result['selection_score']=0.62*result.role_probability+0.38*centrality
+    return result,sim
+
+def generate_extractive_summary(frame,word_budget=430):
+    ranked,sim=score_document_sentences(frame)
+    chosen=[];remaining=word_budget
+    for section in SELECTION_ORDER:
+        idxs=ranked.index[ranked.role.isin(SECTION_ROLES[section])].tolist()
+        idxs.sort(key=lambda i:float(ranked.at[i,'selection_score']),reverse=True)
+        quota=SECTION_QUOTAS[section]
+        picked=0
+        for idx in idxs:
+            if picked>=quota:break
+            word_count=len(ranked.at[idx,'text'].split())
+            if word_count<5 or word_count>remaining:continue
+            if any(sim[idx,other]>REDUNDANCY_THRESHOLD for other in chosen):continue
+            chosen.append(idx);remaining-=word_count;picked+=1
+    output={}
+    for section in SECTION_ROLES:
+        part=ranked.loc[sorted((x for x in chosen if ranked.at[x,'role'] in SECTION_ROLES[section]))]
+        output[section]=part[['sid','text','role','role_probability']].to_dict('records')
+    return output,ranked
+
+SUMMARY,FR_SCORED=generate_extractive_summary(FR,MAX_SUMMARY_WORDS)
+
+def render_summary(summary,source_name):
+    lines=[f'# Extractive judgment summary — {source_name}',
+           '', '*Verbatim sentences selected by a model; verify against the original judgment.*','']
+    for section,entries in summary.items():
+        lines.extend([f'## {section}',''])
+        if entries:
+            for row in entries: lines.append(f'- [{row["sid"]}] {row["text"]}')
+        else:
+            lines.append('_No confidently identifiable sentence selected for this section._')
+        lines.append('')
+    return '\n'.join(lines)
+
+SUMMARY_MD=render_summary(SUMMARY,SOURCE_NAME)
+print('Selected sentences:',sum(map(len,SUMMARY.values())))
+print('Selected words:',sum(len(e['text'].split()) for v in SUMMARY.values() for e in v))
+display(Markdown(SUMMARY_MD))
+
+safe_name=re.sub(r'[^a-zA-Z0-9_-]+','_',Path(SOURCE_NAME).stem)[:60] or 'judgment'
+run_stamp=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+RUN_DIR=OUT_DIR/f'{safe_name}_{run_stamp}'
+RUN_DIR.mkdir(parents=True,exist_ok=True)
+(RUN_DIR/'summary.md').write_text(SUMMARY_MD,encoding='utf-8')
+selected_text=' '.join(e['text'] for entries in SUMMARY.values() for e in entries)
+(RUN_DIR/'summary.txt').write_text(selected_text,encoding='utf-8')
+FR_SCORED[['sid','sentence_index','text','role','role_probability','centrality','selection_score']].to_csv(
+    RUN_DIR/'sentence_roles.csv',index=False,encoding='utf-8')
+audit={'input_name':SOURCE_NAME,'synthetic_demo':INPUT_SOURCE=='demo',
+       'input_characters':len(raw_text),'sentence_count':len(FR),
+       'selected_sentence_count':sum(map(len,SUMMARY.values())),
+       'selected_word_count':len(selected_text.split()),
+       'encoder_fingerprint':SIGNATURE,'head_name':'bilstm_softmax',
+       'head_best_epoch':int(saved['epoch']),'word_budget':MAX_SUMMARY_WORDS,
+       'sections':SUMMARY,'generated_at_utc':run_stamp}
+(RUN_DIR/'summary_audit.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf-8')
+print('Saved Stage 3 outputs to:',RUN_DIR)
+print('All sentences remain traceable in sentence_roles.csv')
+
+REFERENCE_TXT_PATH='' # optional: path to independently written reference summary (.txt)
+if REFERENCE_TXT_PATH.strip():
+    from rouge_score import rouge_scorer
+    reference=Path(REFERENCE_TXT_PATH).read_text(encoding='utf-8')
+    if len(reference.strip())<30:raise ValueError('Reference summary too short')
+    scorer=rouge_scorer.RougeScorer(['rouge1','rouge2','rougeL'],use_stemmer=True)
+    scores=scorer.score(reference,selected_text)
+    for key,result in scores.items():print(key,'F1:',round(result.fmeasure,4),
+                                          'precision:',round(result.precision,4),
+                                          'recall:',round(result.recall,4))
+else:
+    print('ROUGE not calculated: no human reference supplied. '
+          'We will evaluate on the IN-Ext dataset in Stage 3.1.')
