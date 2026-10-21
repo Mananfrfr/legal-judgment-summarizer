@@ -1,0 +1,19 @@
+{
+  "tag": "v0.1.0-faculty",
+  "assets": [
+    {
+      "name": "encoder.zip",
+      "sha256": "496b8932f4f8cf6055ab12a63ef156071f175f41a1b9f4ca9f52daecc0f10b07",
+      "size": 405966668,
+      "extract": true,
+      "url": "https://github.com/Mananfrfr/legal-judgment-summarizer/releases/download/untagged-79ce7756b2e5f59c9ef7/encoder.zip"
+    },
+    {
+      "name": "stage4_english_model_bundle.zip",
+      "sha256": "e6cf75283ea068979d348d1e885e3ab57fb97b6c6965132d172a90eb07f5c559",
+      "size": 4342835,
+      "extract": false,
+      "url": "https://github.com/Mananfrfr/legal-judgment-summarizer/releases/download/untagged-79ce7756b2e5f59c9ef7/stage4_english_model_bundle.zip"
+    }
+  ]
+}
