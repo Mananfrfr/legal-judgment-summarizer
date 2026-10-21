@@ -81,6 +81,8 @@ two=[md('''# 02 · From TF-IDF to InLegalBERT and sentence selection
 
 The path is **TF-IDF baselines → word BiLSTM → context-aware InLegalBERT → document BiLSTM (with a CRF comparison) → sentence selector**.
 The final app uses the existing verified encoder and heads. Heavy retraining is off by default. Short cells expose the decisions; reusable loops are in `src/train_models.py` and `src/train_selector.py`. Original experiment sources remain in `research/`.
+
+For visible, step-by-step KNN, logistic regression, SVM and word-BiLSTM training code, open the optional [Stage 1 notebook](00_classical_ml_and_word_bilstm.ipynb). [Where the rest of the code lives](../docs/code_map.md).
 '''),*setup,
 code('''from data_utils import demo_role_data, read_frames
 from train_models import train_baselines

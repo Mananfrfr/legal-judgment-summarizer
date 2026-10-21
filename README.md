@@ -4,6 +4,8 @@ An English legal NLP mini project: **classical ML → InLegalBERT → document B
 
 The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model and the Stage 4.5 inference engine are preserved.
 
+**Want to see the early ML code in full?** Open [00_classical_ml_and_word_bilstm](notebooks/00_classical_ml_and_word_bilstm.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/00_classical_ml_and_word_bilstm.ipynb)). This optional fifth notebook shows TF-IDF, majority baseline, KNN, logistic regression, SVM, error analysis, saved-model prediction and word-level BiLSTM training step by step. [Why the other notebooks are short and where the full code lives](docs/code_map.md).
+
 **Research preview:** the app requires human review. A separate three-judgment check found two serious decision-section failures. Exact source matching is not legal accuracy. [Read the evaluation](docs/current_pipeline_evaluation.md).
 
 ## Start here for the faculty presentation
@@ -17,7 +19,7 @@ Read the [faculty walkthrough and viva questions](docs/faculty_walkthrough.md), 
 | [03_model_evaluation](notebooks/03_model_evaluation.ipynb) | Recorded comparisons, macro F1, ROUGE and error analysis | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/03_model_evaluation.ipynb) |
 | [04_final_pipeline](notebooks/04_final_pipeline.ipynb) | New document → source evidence → structured brief → review | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/04_final_pipeline.ipynb) |
 
-Each notebook has one setup cell. `%%project` runs ordinary Python in a persistent isolated kernel, keeping legacy Hugging Face dependencies out of Colab's base environment. All four default paths were executed locally through this mechanism; a fresh hosted Colab installation and full retraining were not run during consolidation. The first hosted setup can take several minutes.
+Each notebook has one setup cell. `%%project` runs ordinary Python in a persistent isolated kernel, keeping legacy Hugging Face dependencies out of Colab's base environment. All five default paths were executed locally through this mechanism; a fresh hosted Colab installation and full retraining were not run during consolidation. The first hosted setup can take several minutes.
 
 ## What the recorded experiments show
 
@@ -32,7 +34,11 @@ Each notebook has one setup cell. `%%project` runs ordinary Python in a persiste
 
 These are saved experiment results, not fresh reruns. [Full role table](evaluation/role_results.csv).
 
+![Recorded development macro F1 across role-classification experiments](docs/images/recorded_results_1.png)
+
 The earlier Stage 3.6 official test evaluated six methods on 100 IN-Abs cases, using 120 sampled candidates and a 400-word budget. The TF-IDF-teacher no-role selector recorded ROUGE-1/2/L F1 of **.5202 / .3177 / .3073**; the greedy-teacher role-aware selector recorded **.5188 / .3168 / .3096**. No single condition wins every metric. [All methods](evaluation/evaluation_results.csv), [recorded provenance](evaluation/recorded/provenance.json).
+
+![Recorded summary-overlap scores on 100 official test cases](docs/images/recorded_results_2.png)
 
 The current app uses full-document windows and structured evidence rules, so those older ROUGE scores do not measure its current performance. The three separate current-pipeline checks are reported independently. No general human legal-accuracy percentage is claimed.
 
@@ -64,7 +70,7 @@ Follow [data/README.md](data/README.md) to obtain the original datasets. The pub
 Set `DEMO=False` in Notebook 01 to prepare official data. Notebook 02 defaults to `RUN_TRAINING=False`; opt in to long GPU training when ready. Newly trained encoder/head/selector outputs remain research experiments until re-evaluated and packaged with matching provenance. Do not combine a new encoder with the old selector bundle. Archived source exports preserve the original experiments for comparison; the concise workflow does not claim a fresh numerical reproduction.
 
 ```text
-notebooks/    four teaching and workflow notebooks
+notebooks/    four main notebooks + optional detailed Stage 1 ML notebook
 src/          audited pipeline, readable training entrypoints, review app
 tests/        inference, app, CRF and teaching-workflow checks
 data/         dataset instructions, source URLs, fixed train/dev IDs
@@ -82,9 +88,11 @@ scripts/      dataset/model downloaders, notebook builder and validation
 python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -v
 python scripts/validate_notebooks.py
+# Also exercise one synthetic epoch of the optional word BiLSTM:
+python scripts/validate_notebooks.py --word-bilstm-smoke
 ```
 
-**71 automated tests passed** during consolidation. All four default demonstration notebooks were executed. Full official-data retraining, fresh hosted Colab installation and public hosting are not claimed. See [validation](docs/validation.md).
+**71 automated tests passed** during consolidation. All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
 
 ## References and license
 

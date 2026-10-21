@@ -16,6 +16,8 @@
 
 Do not retrain models live in the meeting. Run the demo beforehand and keep `examples/sample_summary.md` available if the runtime disconnects. Keep `RUN_TRAINING=False`. If you demonstrate evidence-only mode, say explicitly that trained ranking is disabled; for the actual model, download the frozen release first and enable it.
 
+If your faculty wants to inspect the initial ML pipeline, open [Notebook 00](../notebooks/00_classical_ml_and_word_bilstm.ipynb). It shows TF-IDF, majority, KNN, logistic regression and SVM inline, with optional word-BiLSTM training. Keep `RUN_WORD_BILSTM=False` for the quick demonstration. [The code map](code_map.md) explains which functions the short main notebooks call and where their implementations live.
+
 ## Questions you are likely to get
 
 **Why not only TF-IDF?** It is a useful baseline but mostly captures word overlap. BERT provides contextual language representations; the experiments measure whether that helps our role task.

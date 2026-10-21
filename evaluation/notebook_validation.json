@@ -1,22 +1,38 @@
 [
   {
+    "notebook": "00_classical_ml_and_word_bilstm.ipynb",
+    "default_demo_executed": true,
+    "synthetic_word_training_epochs": 0,
+    "heavy_training_executed": false
+  },
+  {
     "notebook": "01_data_preprocessing.ipynb",
     "default_demo_executed": true,
+    "synthetic_word_training_epochs": 0,
     "heavy_training_executed": false
   },
   {
     "notebook": "02_model_training.ipynb",
     "default_demo_executed": true,
+    "synthetic_word_training_epochs": 0,
     "heavy_training_executed": false
   },
   {
     "notebook": "03_model_evaluation.ipynb",
     "default_demo_executed": true,
+    "synthetic_word_training_epochs": 0,
     "heavy_training_executed": false
   },
   {
     "notebook": "04_final_pipeline.ipynb",
     "default_demo_executed": true,
+    "synthetic_word_training_epochs": 0,
+    "heavy_training_executed": false
+  },
+  {
+    "notebook": "00_classical_ml_and_word_bilstm.ipynb",
+    "default_demo_executed": false,
+    "synthetic_word_training_epochs": 1,
     "heavy_training_executed": false
   }
 ]
