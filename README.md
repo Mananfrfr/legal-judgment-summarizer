@@ -1,5 +1,7 @@
 # Legal Judgment Summarizer
 
+**Candidate branch: 4.6.0-preview.** This branch tests final-decision extraction fixes; the trained weights are unchanged. It passed 76 automated tests and targeted development regressions, but has no new unseen-document accuracy measurement. [Changes and evaluation](docs/decision_upgrade.md). The released presentation version remains on `main`.
+
 An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
 
 The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model and the Stage 4.5 inference engine are preserved.

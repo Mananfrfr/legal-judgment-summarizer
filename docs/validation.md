@@ -1,5 +1,7 @@
 # Consolidation validation — 21 October 2026
 
+**22 October candidate update:** the `improve-decision-attribution` branch changes two inference modules and passes 76 tests plus development-document checks. The statements below describe the original consolidation and released Stage 4.5 code. See [the separate candidate report](decision_upgrade.md) for the new revision; its weights are unchanged and its unseen-document accuracy is unmeasured.
+
 ## Verified
 
 - 71 automated tests pass: the original 62 pipeline/app checks plus nine teaching-workflow checks. The additions cover document-split leakage, baseline fitting, no-overwrite protection, same-document context packing, padding masks, CRF versus brute-force calculation, budgeted weak labels, real one-epoch fixture training for softmax/CRF heads and all four selector conditions.
