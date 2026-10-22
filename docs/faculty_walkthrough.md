@@ -63,3 +63,11 @@ If your faculty wants to inspect the initial ML pipeline, open [Notebook 00](../
 1. Should the next milestone emphasize role classification, summary quality, or the end-to-end demo?
 2. Can we obtain independent legal review or annotated current-decision spans?
 3. What evaluation size and baseline comparisons are expected for the mini project?
+
+## Current automatic summarization result
+
+The current 4.6.0 pipeline at its default 800-word target achieved **20.94 ROUGE-L F1 points**, with a 95% case-bootstrap interval of **19.41–22.58**, on all **100 official IN-Abs test judgments**.
+
+The current structured pipeline scores below the opening-sentence baseline on ROUGE-L. These results do not establish a reference-overlap improvement from the pipeline. The decision fixes addressed specific attribution errors; they did not establish better overall summarization.
+
+Report this as ROUGE-L F1, not legal accuracy. [Full results and presentation wording](current_summary_benchmark.md).

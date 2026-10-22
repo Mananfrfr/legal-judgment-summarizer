@@ -1,0 +1,956 @@
+{
+  "created_utc": "2026-10-22T09:40:28.215938+00:00",
+  "pipeline_version": "4.6.0",
+  "inference_commit": "c8cce5d202219061f0f5f20696041cde39b2f6d3",
+  "dataset_url": "https://zenodo.org/records/7152317",
+  "dataset_md5": "c77948fe580d26200f5c9fe53b81485d",
+  "source_code_sha256": {
+    "stage44_source.py": "2f1daeeef89b837d636a5420948b3f924184fb4af5b6ed1e78a58d7ebe118c05",
+    "stage44_attribution.py": "b8cf9aa448858e39c53fb21bafdc48b2635ee13337ba14e568deac402b9410ad",
+    "stage44_windows.py": "e6333308e2abf998d663c9a9ac83232b7c3c64401dd79a87223e6a704e810d62",
+    "stage44_model.py": "6f2c57d7e88c47113201a852b7f30df2111ccf7cdb3c9059998001c31dc75d15",
+    "stage44_brief.py": "599537b258f98b2bed6393ce2af2814a3a154ebdd7b65dd937565972352aafc1"
+  },
+  "evaluator_sha256": {
+    "scripts/evaluate_current_summarizer.py": "56d45afd63e95a472abab44c0f35ce34e2dbcef1088a68ff0e2ccc1c74bcae95",
+    "src/summary_evaluation.py": "4977c3f3c3e34de2dea4ccf28cb30c278ce403123f925bfbf806062701382825"
+  },
+  "model_bundle_sha256": "e6cf75283ea068979d348d1e885e3ab57fb97b6c6965132d172a90eb07f5c559",
+  "encoder_files_sha256": {
+    "config.json": "ae9c1121989e71b2b90c79fa914c35dee4c90661fb953fe01b7ff9714016ea33",
+    "tokenizer.json": "748b33bb35e7b2b1deb1fba79cf9dbf616fe0f8329ab7c7a880e123d8a0f1f13",
+    "model.safetensors": "4b2bdba98605d5f52d28ea7f18d10ddef5cd3ab94d1ab3555a2acd528685ce11"
+  },
+  "case_count": 100,
+  "cases": [
+    {
+      "id": "1181.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1181.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1181.txt",
+      "split": "test",
+      "source_sha256": "1eec68788763d5e98f3a41de3db58efb9f38ec40f4c5932f2dac1580146a471f",
+      "reference_sha256": "273f5f5ce224d14b3f4314985a7b4fad4eee3c345a692859c754f2eaf069fd02",
+      "normalized_source_sha256": "a52eaf19e0dd9e4661e811cfe5a9a85ec4dd3077e6083759525b406c791f7db2"
+    },
+    {
+      "id": "1195.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1195.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1195.txt",
+      "split": "test",
+      "source_sha256": "47e601e653acb5dc873637dddb8e2460d0b32076383c425a600a1d4bd8cbfbb9",
+      "reference_sha256": "ed88487ed062afb61985be775a298da4031c8d2ea3f215d76d1791f0f8cd2ad8",
+      "normalized_source_sha256": "85a7649833ffbc8df395ca8ea7a385a82bd3c370c047566e2bf2361df936471c"
+    },
+    {
+      "id": "1329.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1329.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1329.txt",
+      "split": "test",
+      "source_sha256": "45fe20b842a19f2dc1a2fed99d1b15345fd62db6efa308ab534672b09e236472",
+      "reference_sha256": "70639581e6ea2c5fbf08f83ad6344b9598b061cc53fadb43ff59061a1d7bc8a7",
+      "normalized_source_sha256": "00450b218f821cdf282b8309855443b7922d71340a847c528db458e6897e6131"
+    },
+    {
+      "id": "1378.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1378.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1378.txt",
+      "split": "test",
+      "source_sha256": "4665df31ae64f1e6a05ce138a1d9754130ea90c23db9b2957e82e0820f8622e7",
+      "reference_sha256": "8a6a1514691d814f0c1616814ab18525749cedcd14154dd8f92f1bede9995e93",
+      "normalized_source_sha256": "448ae66c60cd0cc42cd09d9d57456ad7771d6c420071354c8ca5706bff40b131"
+    },
+    {
+      "id": "1406.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1406.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1406.txt",
+      "split": "test",
+      "source_sha256": "91dd6e1a6cab4adecddaa8101965b80972cb8de46ab665835fa38604985fe612",
+      "reference_sha256": "09b0f9493d1fcdd853510fc428d813523461cedea5665ee10eda05f4a94e5a36",
+      "normalized_source_sha256": "2fe086aab29de18067e092a5543324885cfb2f9fab581bf4ade001ee925864d4"
+    },
+    {
+      "id": "1522.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1522.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1522.txt",
+      "split": "test",
+      "source_sha256": "dfcc503156c460373201ae5cb6b2b93796f46a4f1214aba0d2d09d5dfd518253",
+      "reference_sha256": "5b6e888ddd01202455ca930b6b37371a4e8ae68c7f4efa3b82b43218eabb29c8",
+      "normalized_source_sha256": "828e08e0f704c59f5821cb4b45d885fa1a16aca4ba237357bd69f82ec6e2f87e"
+    },
+    {
+      "id": "1531.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1531.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1531.txt",
+      "split": "test",
+      "source_sha256": "54ec02c12c65c9ea46488dc9130a33c562d388f5bcb1373a5d4bc39281c14fe8",
+      "reference_sha256": "7679272e98f59a47b37b807f69d0238096d35b48a854a64e901a4edbe025a693",
+      "normalized_source_sha256": "963f5d33f39d868b4a56e02b42e0730de9f658879f1cef477c63ac17ab9dcdd7"
+    },
+    {
+      "id": "1697.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1697.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1697.txt",
+      "split": "test",
+      "source_sha256": "54b2dcb5eb99571dbf8bed0d2703085a30a40b4c27a3d2affee4a347b7eb60b7",
+      "reference_sha256": "8c38f183fa3cbc053cf5d270eda9f3d0c53217c3c521ed464ecd367403952db5",
+      "normalized_source_sha256": "bf19822571850d2bfb9517836d9c519ad6358f33be9d1232e63eec7dc4ba5580"
+    },
+    {
+      "id": "1762.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1762.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1762.txt",
+      "split": "test",
+      "source_sha256": "ffd5eb2e575e6797d74a01f3e5b18c254156840b701998381788944c9f405cc3",
+      "reference_sha256": "5015de0cb10aa938214792fa49837149e5fbff1618211ab095fbfaf884af3382",
+      "normalized_source_sha256": "403ea3bb27b1fb445d9e0c4f74ddda338a54d085181b46cf8c542c316ac22368"
+    },
+    {
+      "id": "1778.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1778.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1778.txt",
+      "split": "test",
+      "source_sha256": "7cfdb4a63852dde890f8bbe969a73eb53ea49adad604062d616e9c983c30e1b0",
+      "reference_sha256": "a20192533fe948a06df0953f23489d83b262e653118afa0382af4f7b84c14123",
+      "normalized_source_sha256": "f30f0969d5ac7369aba6288489eb046d8a38d690732f891f3820ec960fe4c75a"
+    },
+    {
+      "id": "1789.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1789.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1789.txt",
+      "split": "test",
+      "source_sha256": "3c6ad3d36246a0ddf826b7c9c38bb6a994fcf4c7d6de7b6d7ac0b58632658d38",
+      "reference_sha256": "94e2ff2ce5ee82f59876f17a4ebdf126ec181589172ef545dd7979d2e437452f",
+      "normalized_source_sha256": "bf4bc1320b4eb1e7f0e022e7cfadd5007be2cca99d253f242b06ed792b95332f"
+    },
+    {
+      "id": "1974.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/1974.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/1974.txt",
+      "split": "test",
+      "source_sha256": "45c4448c0dc6a51ebba87b9d2e9705d6c847b947410c269034196290b13ec4b5",
+      "reference_sha256": "880022edfbd6b61c8e64cf97a7bb8b3a9456533cfd2bbbcc95050398571cdcf1",
+      "normalized_source_sha256": "947b9561b0fab4fcecc8d292fa34f47257350a90e8248315bb7ea57208ff92fc"
+    },
+    {
+      "id": "2035.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2035.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2035.txt",
+      "split": "test",
+      "source_sha256": "f367a62ba1f6ef953401c54949d4448e51a948d2a0c2d7df47c85ff16ed42e0d",
+      "reference_sha256": "f51bb3c4baf78ae4d88f235d9af8fcf58caa1bae7402fc81ac63cb3d5e38483e",
+      "normalized_source_sha256": "a6597d0466b477b0cb758546ebc4d98bacdab6813347a42f0abf6cd445af20fd"
+    },
+    {
+      "id": "2052.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2052.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2052.txt",
+      "split": "test",
+      "source_sha256": "8b1f42e20e92b00f8ddb90ad119d7b39968efe2247d33640e9b03f0220ddd463",
+      "reference_sha256": "193954a1688f4cd448be7da580de543588b0ac7478a952e454fd9356b4f1a099",
+      "normalized_source_sha256": "2bfbdcdb7e2f3862bb8cf57c3410a7e60d6b20bc06cb257811898edada1919b7"
+    },
+    {
+      "id": "2065.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2065.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2065.txt",
+      "split": "test",
+      "source_sha256": "b5356a591593f77ddd5b4f4471e8557623cf59eae1aa86b1c41719be3159a807",
+      "reference_sha256": "af2578e27578cc4e348ad7e2837911208a2a535cea1039454b35a119369c8973",
+      "normalized_source_sha256": "744042bef130c74795c13ed4fdbda58bc57a28881e1ba7233d2beb653ec7acf7"
+    },
+    {
+      "id": "2122.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2122.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2122.txt",
+      "split": "test",
+      "source_sha256": "3f7cc0e40680330ad151b58292ab63d861802db1d8c4fed72b9df0c637e35c31",
+      "reference_sha256": "aee20472a88091e72c5166e9849709045a60ef45d16293b7e9323ba34057998a",
+      "normalized_source_sha256": "2957054ce0f53176f7efd976088721e2c15abd7dbd1a2d9acbc00a5f4ccbb96e"
+    },
+    {
+      "id": "2124.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2124.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2124.txt",
+      "split": "test",
+      "source_sha256": "6cc091c3000e0148227862b0772211063e56b36a39af38f92d536d4f92177804",
+      "reference_sha256": "339af2e4c54c45d696b5f84c53cf2481eb92e3fe51f26dc3447398f3d9af1439",
+      "normalized_source_sha256": "89374db428170412735410e241021bfa812415e802c01557921da20a026f5281"
+    },
+    {
+      "id": "2207.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2207.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2207.txt",
+      "split": "test",
+      "source_sha256": "4895d1bc1a736cb9c57ebc789c511ec552f014b50b38de053c9ba076205dda20",
+      "reference_sha256": "cb19205b9d17813f80da7aeebd7d18b808d1fe214c75e3d78045c525dce2aa73",
+      "normalized_source_sha256": "f8a3e334f7b95a2a2f0bc1fe9a751e988f9d6bce7ab4541c6cc56e30d6315396"
+    },
+    {
+      "id": "2248.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2248.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2248.txt",
+      "split": "test",
+      "source_sha256": "121ef54a38c1d0c04f7311b34036229a5c4dc5153017bf383bc14281b568db92",
+      "reference_sha256": "06a1852c59479207eaff0a331b778e803d978507294799eb3ab03847d5c739b0",
+      "normalized_source_sha256": "b69931e554e2d60cff0bd549206769faf2108bf0d0a1ac8744fcecf3330d3698"
+    },
+    {
+      "id": "2256.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2256.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2256.txt",
+      "split": "test",
+      "source_sha256": "11629f3f9784fe0ad2c0f4b8ae55106bb79edb1aefc415402f1f485848253566",
+      "reference_sha256": "c3f08eb3ee18613dafa38fbef251b4a4ce69ee0ac6c79fa21cd57dba69595d3e",
+      "normalized_source_sha256": "1c8d79df000d03043346f4e545715b652536da6869a52583c9e64d6b036c735c"
+    },
+    {
+      "id": "2304.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2304.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2304.txt",
+      "split": "test",
+      "source_sha256": "f0e0219e94bd6fb5bf9195c83037df2ce8f11a64a9148862d47d9be156437171",
+      "reference_sha256": "50671b10c26f8dc00bffa154690905cfa4980bb685b818bee6984f0418580202",
+      "normalized_source_sha256": "0a87a683919635100b87435f46eca1049b205d6620ef14486d7951e226e269be"
+    },
+    {
+      "id": "232.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/232.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/232.txt",
+      "split": "test",
+      "source_sha256": "fd67a8cf9890c70cc1558b353f82c5ab00a5ccf59c5bad01ae7b57c88be3875c",
+      "reference_sha256": "2e9b52d8d5d4cd4129c1327d6cd88246752c597f71c7439b53c37238688f58b0",
+      "normalized_source_sha256": "13c9ef698ae2e842fcdef3b89b6e49687416c3d43b856cc58d771aff35d1367b"
+    },
+    {
+      "id": "2392.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2392.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2392.txt",
+      "split": "test",
+      "source_sha256": "f02977ff611443ee6689c21ec990528a504a5599aa07002f1f16fb641c3742ff",
+      "reference_sha256": "c4ff617439dcf802f8148ad29d9dd9954d35d220a6caa6cae30ff6e319791292",
+      "normalized_source_sha256": "011d05bda0ab401d94a2284783abcb993eb75491f47c834817e0cc1d980c0517"
+    },
+    {
+      "id": "2440.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2440.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2440.txt",
+      "split": "test",
+      "source_sha256": "166e29710e1e4d593f33f14bef8041d05ed2d8ddcb8e46c0b13b3d312dcd215a",
+      "reference_sha256": "07812e527392438bc1e2a6765f8016e461ad74a008cfe58dfc6074366a34a003",
+      "normalized_source_sha256": "f7a5aada8e6fcc205a2b3ff84e94563e29b131e0064085b7c036fb1543a456c2"
+    },
+    {
+      "id": "2593.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2593.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2593.txt",
+      "split": "test",
+      "source_sha256": "2f24fec03417ca321b497fb335a1cc88f497af21bb30360ae31efd643476b555",
+      "reference_sha256": "2233a5889eeaa7a7f4ada4729c6979cf556c2831467c0cceeac238d28134f9bc",
+      "normalized_source_sha256": "1840ffd891b8edecbe08e7b624e50182a84d982016bb576bc92d72494a042c95"
+    },
+    {
+      "id": "2609.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2609.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2609.txt",
+      "split": "test",
+      "source_sha256": "e84e8ea4f940324abf1cec8a1bbbc0e7cb900923783b240fb5a151e30b72ba4b",
+      "reference_sha256": "5fb2dfd22e09787373593bbedf0b07fceb74dec56b2023ff4cd4cada13967714",
+      "normalized_source_sha256": "b2bdf329c313874f13aedf074c29ae5777042a26d67c5bbedd439baf2b8fcb22"
+    },
+    {
+      "id": "2627.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2627.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2627.txt",
+      "split": "test",
+      "source_sha256": "362261df32de5d9415d5c132650b75c519412bf0000776ace44970b825963bab",
+      "reference_sha256": "cbec5d24e2c64e3fb0e2c2a251abd6dc562a46ad20e9efd500f5e1df7b03e0ee",
+      "normalized_source_sha256": "4cbc33c4a572dac03c798f34e039e657a21d14dfb007ca8a7b4eccd49db0682e"
+    },
+    {
+      "id": "2649.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2649.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2649.txt",
+      "split": "test",
+      "source_sha256": "abf2046cb870cc7a537dc7bb8c361ecf8180fe5f3b51de23e888f07787dc5fe4",
+      "reference_sha256": "aca89b2d420aa82ec962fbba166644ace12373fc8a90a33a3262f3156f4238ff",
+      "normalized_source_sha256": "760918639d21c0a48a86f6a8fb915e19c9d10924ba9a1bdf0adf559288fdf7df"
+    },
+    {
+      "id": "2657.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2657.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2657.txt",
+      "split": "test",
+      "source_sha256": "c4e88d910d2c3b69b22c6e11e6c52f2a5de7180a4d1052eacfe4eebe414f25f3",
+      "reference_sha256": "6946a6ce8e554a945179b200d26877adf5d35d32f85b17319b98240074780990",
+      "normalized_source_sha256": "53b6f4e9de17e17456b7c5e020b94ab68b4677a878ec5d1a96d0d90395f92652"
+    },
+    {
+      "id": "266.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/266.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/266.txt",
+      "split": "test",
+      "source_sha256": "07365f44885e5dd0e0732e655ff8130eba191731dd4a362826e1b3cf23a7d302",
+      "reference_sha256": "a56b72108fe3b29285035ccb00f5b5d25e1f4f691a1082cd27c988d077851b87",
+      "normalized_source_sha256": "14da39093976e9546e9137d99456a3de856d372536a91290a4aeff3f1a39512e"
+    },
+    {
+      "id": "2727.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2727.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2727.txt",
+      "split": "test",
+      "source_sha256": "78975e4d7b0d5a041cc90af5345999abffda5b0f330b07f6f0dac9067bf7a3b3",
+      "reference_sha256": "79dce779ebb55e0b200f790ccf76757047aa6c4b797743cdedc1fa458428edb5",
+      "normalized_source_sha256": "ad90769c2671508ea7baac45c361c7b877226a3ac107ecde794bd1028f6a9ea7"
+    },
+    {
+      "id": "2796.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2796.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2796.txt",
+      "split": "test",
+      "source_sha256": "49edb46b34a3af21db874434dc79c306a4d175440fe9f385d1beb57aaceea012",
+      "reference_sha256": "9993775c08190ee0b3aaf07db44089d3794f53dec21b086f1adf064a5d9b2783",
+      "normalized_source_sha256": "80c60888698602a5ab88db37624e9c594cd4e863671ff516ea613014f1f08ce7"
+    },
+    {
+      "id": "2913.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/2913.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/2913.txt",
+      "split": "test",
+      "source_sha256": "c0f8bced7f8c1d3d5d95c0ac5617d92f86e63ce73c7431ae134b6549907c38a3",
+      "reference_sha256": "53af4ea5a395900e1614331103573027f803e1218497a6fe3804e20f2e88e8c6",
+      "normalized_source_sha256": "2196905b2f646b73c94427698b03e4b7a0673b7ce68f997ccf50227aadc61dc2"
+    },
+    {
+      "id": "3019.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3019.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3019.txt",
+      "split": "test",
+      "source_sha256": "c2df5e5012958d7279b9bf02bf551a78c7dece8921a11678f5ae57b8a325b696",
+      "reference_sha256": "10ae3f0103555d2b644bc33785dce901924b0c453b11d1925465adb3a8b10e1c",
+      "normalized_source_sha256": "c21a3be31c46c3f14d19a70daa0b15d056eba86b16d87c21a6ecb8a297927eaf"
+    },
+    {
+      "id": "314.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/314.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/314.txt",
+      "split": "test",
+      "source_sha256": "400ec29e669e56047ef494e1432fed632035b04b7399ae8da027155301a6c68d",
+      "reference_sha256": "f3c4cb3abb78bbafb9fe048a01d97bd752f51fbc951b6529024e2915c727d290",
+      "normalized_source_sha256": "cffd3cd1ef480c9301e9a1eb5e6216fbc2f48fd4fff36b816cedc05cec4ce0ee"
+    },
+    {
+      "id": "3168.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3168.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3168.txt",
+      "split": "test",
+      "source_sha256": "296f780434dac752ee938ac80be1327f946ebd08685dbc8606e686ba9cb9c3e4",
+      "reference_sha256": "ba485f3a6994785290ce9af3e0569e0c4d383e12750d3e906a5468d6e857b95f",
+      "normalized_source_sha256": "f6839eaded29c945f75f9b6cd8222295b95f22e86553dcf245c6aae5626a17c9"
+    },
+    {
+      "id": "3210.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3210.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3210.txt",
+      "split": "test",
+      "source_sha256": "8b5213568fe9d394f4f143ec41149867247d54ebc0875e8d92cb6e2b4f4eaf9e",
+      "reference_sha256": "0bba4ff2ef004fb11deba05285a3e195ae4f01d6fa6005fc10b4b315fb253d40",
+      "normalized_source_sha256": "3bc8d6f9b48465e3d4194992dc00708fb6a6f80c9ab277a1bb20ce97421f1852"
+    },
+    {
+      "id": "3292.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3292.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3292.txt",
+      "split": "test",
+      "source_sha256": "bc5a77ad296aac40f54edefbf7575ba949d52ce67f8bab7281b48b001d06dc76",
+      "reference_sha256": "e348f6ca3f871e76b476553356e2c5209085625a42db43b41398c4f223c9d7fb",
+      "normalized_source_sha256": "cca330294cd1561fdae57219da8d10a7ca53279949d52190df15e86bef7bdb2e"
+    },
+    {
+      "id": "3356.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3356.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3356.txt",
+      "split": "test",
+      "source_sha256": "2e39196c70c44e821d74d44579d37521f15a282612c966a850fe0672682fddb2",
+      "reference_sha256": "b7e2aaf01ba519ba2781a97d2616b9c5b90e464f46105ffe9ea9f6d0a1effbd3",
+      "normalized_source_sha256": "c940b17bd2d3f229debdc5839c791637255d1c0494cae29989e9aa918fe98e21"
+    },
+    {
+      "id": "3436.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3436.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3436.txt",
+      "split": "test",
+      "source_sha256": "7183f53a943c4edc43c1fa2fc5ebb945944227835827d1921e78e97a870088c2",
+      "reference_sha256": "304868c884189df731037c68c0bddc50651435b9d9af65eda6476997e4aed3e7",
+      "normalized_source_sha256": "90187564fcd402e7d5f78b154c6820ab830a1b3c3484bbe5684e4af0126ae55b"
+    },
+    {
+      "id": "3442.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3442.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3442.txt",
+      "split": "test",
+      "source_sha256": "ed23cafe5b09addaab423bf41e893581c0c6ee48105849cdc26ebb4a4d98daa6",
+      "reference_sha256": "a1f75559db1dbe688c4052f806f3e2d7adb7168742fba1468f0a50ca40704fd7",
+      "normalized_source_sha256": "d4439d4b5156918cbe8bf70db4a334e91db1da5b262b36c1eea391512064b504"
+    },
+    {
+      "id": "3531.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3531.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3531.txt",
+      "split": "test",
+      "source_sha256": "e5dd90af90820b6939831f6ebcfde2a2e2152a66df47b9a9d9dffdd24f00c406",
+      "reference_sha256": "458efb805fd53979f73e1e36b806f2a10b334bc069c9497b5c283cbfb525dc13",
+      "normalized_source_sha256": "fafe92bda0b28e6ca95cc7e7b98c859fd68ab6be0f31a46baafb22f91fda558f"
+    },
+    {
+      "id": "3542.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3542.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3542.txt",
+      "split": "test",
+      "source_sha256": "631e9bdaebe94235a2fcd57ce68a760651e030cc531a4cf4f463f5488d2a71df",
+      "reference_sha256": "624f38dfc6ee7292687326998095217d73ca545cbf9b6d23c28bbaa71d02ba69",
+      "normalized_source_sha256": "9d1ce14d2a83d90d2abc75e668ec0dde159eee5a9e97215bc436bccd90ae5c59"
+    },
+    {
+      "id": "3602.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3602.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3602.txt",
+      "split": "test",
+      "source_sha256": "be6ea253c688b40092961ba747ff9d05882c77e1a99085a320db94004dcbc66b",
+      "reference_sha256": "0fb6e1ad8bdf67bbc5e565fe6f21fe459a5b360b033fff8c917953d68acc0c5f",
+      "normalized_source_sha256": "c04a12998c5650382a493cbb425b19aed04918597e894563598dc8c9f74318e9"
+    },
+    {
+      "id": "362.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/362.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/362.txt",
+      "split": "test",
+      "source_sha256": "baeabc8d71f4492b0d37c9d1c742147486b1707697625fd099b5ba92e1b17fff",
+      "reference_sha256": "2a6a58d356ac1d3b706838061a3f8319e95b32af67ad1ee42977c86048588386",
+      "normalized_source_sha256": "a04b908664dd0d731c4b1512d8eadcae1e59ed14300067333ed649f997f67333"
+    },
+    {
+      "id": "380.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/380.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/380.txt",
+      "split": "test",
+      "source_sha256": "e7d0bb993e7f9d1883d2f3596f60d81e6032bed79417a2d58fac2643f5e15ff4",
+      "reference_sha256": "0c98a9fae2ea55ffbd32159fc0de0a58aa9d69c4c38e9528a78afb049eb5d35d",
+      "normalized_source_sha256": "2863d9e1494c092c53b746b1060201259d04e2b12f2b3c0358aa0edaf18c9a8b"
+    },
+    {
+      "id": "3844.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3844.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3844.txt",
+      "split": "test",
+      "source_sha256": "e6605499677c59c054658fbca1ad9c1eda46065d2b697ea22e565aa87b037c28",
+      "reference_sha256": "e52bde78245913f655ca85b1b766a07fd6f2fbe33cc0ff642b717a8191d4bcee",
+      "normalized_source_sha256": "ca8ac7017f65d664a460a2b9c7d976c57ef9cdb222c7cf9c76d6878bc8dc706c"
+    },
+    {
+      "id": "3893.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3893.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3893.txt",
+      "split": "test",
+      "source_sha256": "9134476bb0705b060f651f999efb43ab37e3073d7279f127ada5ded4f961bf95",
+      "reference_sha256": "c1f30a3abeaae0ab9ace8db1b200d30e80070f48a231cd8b1d46d8385923bc08",
+      "normalized_source_sha256": "51b54f9833e9570c438679e9298ae66edf680e3437879347921f9e2211b33a5f"
+    },
+    {
+      "id": "3924.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/3924.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/3924.txt",
+      "split": "test",
+      "source_sha256": "5bf5211ef3f60f9d114d61aabb1f31324879f39e938008e5dff03d2d978345ca",
+      "reference_sha256": "c7e70f8e8ac84e769231806e7c6cd6887c0dfdcd960065708101632f73a1517d",
+      "normalized_source_sha256": "cbaeec9c03f5f3401aa2e1f12b5732942f491fa2de6973777db31d0d63498e7d"
+    },
+    {
+      "id": "4071.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4071.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4071.txt",
+      "split": "test",
+      "source_sha256": "8dc43a07314ed05599760d0a2bfc4e74b11953f60a7131fc68b3c11f3ee6c9ec",
+      "reference_sha256": "3224ab8ee0c5d2b64409590c136ed55eeae781a183e6d2d3b84bbd5adc96740f",
+      "normalized_source_sha256": "d9bf71285c752610a11131d029495c9e9c94032b055fb8f53ea9573e798546b2"
+    },
+    {
+      "id": "415.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/415.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/415.txt",
+      "split": "test",
+      "source_sha256": "cd931e39fbe5f8cc0bf4ba19bb95f6953fcb3a6ddc13255a01eda31c654967df",
+      "reference_sha256": "1195261e91a9e8161fedaae7c08f5904679535c93944b37d481d1e4f8c9bd861",
+      "normalized_source_sha256": "778d5c50e3a0e73b7e595f3711bdae79def2e73e19463e4c8b92edfc1075b6bf"
+    },
+    {
+      "id": "4316.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4316.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4316.txt",
+      "split": "test",
+      "source_sha256": "a44e6346c00b1fc48c33855d962c790f39250eb4b1ddf75abb5236b492fd8512",
+      "reference_sha256": "5127f51cdf09014d978b3ce0235c18d4b898ab4ac712234c3a5e69d147a42494",
+      "normalized_source_sha256": "48e7791fa1f7e03c25eb056273c277a6e7b47329a468d58ce00962984f352d51"
+    },
+    {
+      "id": "4451.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4451.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4451.txt",
+      "split": "test",
+      "source_sha256": "b7a11db26b06dc6cd7408ea61588dfb08ccf67d94ddeb4d3e3122ab3fb037605",
+      "reference_sha256": "9657f51baefd1dd1d036d0a3d52607dd7ffe9af036b630d1b78112e2e6b8e201",
+      "normalized_source_sha256": "c37a15e570d3afafd3ff750b88a0fcbbe44db73da99e5098a17662623a7e36e5"
+    },
+    {
+      "id": "4480.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4480.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4480.txt",
+      "split": "test",
+      "source_sha256": "5f4ae506a5a3a6866e1c20b5c15b07db8f4be582c51472e17883e70354f4dc3c",
+      "reference_sha256": "030fca65421e01dff88d6ef5a2f0329a4ac6174e0f69f20659bd01fa0b82e94f",
+      "normalized_source_sha256": "60e720aa1e36a42340d0064a2d5cd551b7df965f74b7f7ea54287fa438befab4"
+    },
+    {
+      "id": "4568.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4568.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4568.txt",
+      "split": "test",
+      "source_sha256": "2eaf1e81a0360ff86d20f50b4d7f2b9160f4e2495798f441ad0f1a83011f1b1e",
+      "reference_sha256": "9835b4b585dbb4e3964e098491f0b53a12d5326c14253083d80336c91b6efc2f",
+      "normalized_source_sha256": "97d5e904f11702bec7deb8d44b1139e4eef4a9aa9c46d33124d17badd3f9695d"
+    },
+    {
+      "id": "4641.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4641.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4641.txt",
+      "split": "test",
+      "source_sha256": "c428bcfef20f067b90b101990eb129cba63c9eab01946528d5467fe54ce04413",
+      "reference_sha256": "af86bd33fbe077625f24cd7a6a17e6366b93e3e93e6ac4814f019d21470b2111",
+      "normalized_source_sha256": "d2af8a30992d4c514c17f386564408f78bee2badaeb11b846e65f222cc5356be"
+    },
+    {
+      "id": "4782.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4782.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4782.txt",
+      "split": "test",
+      "source_sha256": "1aca254552c9e53dc27be420693c49d695e0b36077c830515d88e3a5395f2640",
+      "reference_sha256": "cc98423402edc716a51e3a33e9ea4b9e3516ccdd3473a69439501898a1d58eb7",
+      "normalized_source_sha256": "2ffff77893a95657b99bb0697db5eb988d2656741082798acdb930db10958c19"
+    },
+    {
+      "id": "4807.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4807.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4807.txt",
+      "split": "test",
+      "source_sha256": "2c01c314c7d34dc43f51614f11b289e5bc5a08547d89979212a36a1a8cf154d4",
+      "reference_sha256": "d4c611675f02930607a03c38a999a0e77176c340459fa3b107deb03519e90af9",
+      "normalized_source_sha256": "9a834b72b39ac42ad0f6ac72cd34e24ec64fd7b410779a2ec8bf7e8f7e84c152"
+    },
+    {
+      "id": "4860.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4860.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4860.txt",
+      "split": "test",
+      "source_sha256": "41c38d7bcb08aa5e9f024a09d5697060e5f79b3156c2523fe6cf156f6ad3f497",
+      "reference_sha256": "533a2eba74da072a1f86a89247c42e67411ab64b00fab2ca02d8502d92a024ea",
+      "normalized_source_sha256": "29dd94eaefa7403d3a6b484a98b3a73c6066b5ef6885506ba1335ba81b54601a"
+    },
+    {
+      "id": "4917.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4917.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4917.txt",
+      "split": "test",
+      "source_sha256": "2b32322b0cd2e3bf27742db501b4cca2848c107f22db592d9ffcfb9f3af02c7c",
+      "reference_sha256": "a15372fa6781ce8e7e11d696e81d999c913deacf6b5ef334e9b6ed25691f9e30",
+      "normalized_source_sha256": "bf8e1e9d9f3fd7d6ac5ab1809cac9381c103d6983e03e5fe6b48df98b1a1ec6d"
+    },
+    {
+      "id": "4938.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4938.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4938.txt",
+      "split": "test",
+      "source_sha256": "a287aea2908d4d46b737ce2d08e968b1db5fb675a1d4549c8dc2f46f9ed33e2f",
+      "reference_sha256": "db0ad38639bf87b3bb035f33408270ca03d1ca2b0e14d2ffb003e4391400fe5a",
+      "normalized_source_sha256": "fa0bbcc25e8c25d033ff581f6707b6df3c263fdcf141ab846c0062a8c90ba6da"
+    },
+    {
+      "id": "496.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/496.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/496.txt",
+      "split": "test",
+      "source_sha256": "9e59ae772b3e12af089a5c868c8d86dab61ae25ba17c3b07d861f6084fefdda9",
+      "reference_sha256": "e826cd4330ea75c94b595c0a9c8c73e65df331543b518cb0057c065d05b0ae33",
+      "normalized_source_sha256": "1db0a15cb7d9a9b826c4eb78d3eb4d2f99d635432c221fa73d39cc594a1530b7"
+    },
+    {
+      "id": "4963.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/4963.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/4963.txt",
+      "split": "test",
+      "source_sha256": "2de806dd90ee7f7421fe33ebab440ad9b9137fc7c9dc0e0681f2c0c0086b91bf",
+      "reference_sha256": "830c5c67cd315acf03a8d9d5ff38401c240b86f6fff23832c1c7feb552185a89",
+      "normalized_source_sha256": "24e028c5923a63a559e513187cb68621e68ff917a086d22395c03e8012db731f"
+    },
+    {
+      "id": "5141.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5141.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5141.txt",
+      "split": "test",
+      "source_sha256": "50460611eacae79ca15e4435dc7414817e3165b64cc2ad3d37238fe25805698f",
+      "reference_sha256": "4feb062c0acc81b01784f43872ded85ca2aeefb52b6f8573bcd5428ca0caffb0",
+      "normalized_source_sha256": "ab8f9d64d34532525eddca8ab03076694fb6fdf2c3d5e6c4d539e5798c2e3838"
+    },
+    {
+      "id": "5142.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5142.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5142.txt",
+      "split": "test",
+      "source_sha256": "e312193ceb0af4a5649eba39f5e219dbd986179ae093bcdc7c2ebf2169948f81",
+      "reference_sha256": "a015010edd073d94cea89378563cc7d9c00c6668b7823b7015c7373288389e6a",
+      "normalized_source_sha256": "9e614cce3a2964d824aa667b0d9d6509c518682f06bb9f531b5b477cb6a14ced"
+    },
+    {
+      "id": "5248.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5248.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5248.txt",
+      "split": "test",
+      "source_sha256": "273b376fe4b7e0adab68423516e6a048113cf1b7a656bd9e5e04af58a66b89bd",
+      "reference_sha256": "09ac76a317c52c2b8fb41f95642fb62f76f0753bb23aaf2ff96a799a36314452",
+      "normalized_source_sha256": "5e1749bcbf050f4209ab8096ce31e23e3066c8425145f4f0abc2eba63c9c784b"
+    },
+    {
+      "id": "5266.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5266.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5266.txt",
+      "split": "test",
+      "source_sha256": "b00f29e64cc3c6482d889387e4d0756fdb35488bf450e000b31d1f19287d457d",
+      "reference_sha256": "65df195b4e89f0277670e58ccdcc5faf2979e5c61179007f7d2c38b1296a2bf8",
+      "normalized_source_sha256": "6945a1b02d287eaac018d8ee21eef68c12fb74d7a9700cf859385074e81167b3"
+    },
+    {
+      "id": "5364.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5364.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5364.txt",
+      "split": "test",
+      "source_sha256": "92cde4e6021be1c26f7ba6ce752c9c88ebbd2bbf25f7edaf585677feacee9d23",
+      "reference_sha256": "370a5f812b99e8a69c0a649ab19f6319454d0988a759987f3183b6998f9fa148",
+      "normalized_source_sha256": "07c1c5680bc2b70e5744e8bf0d5ac81654bb73e2a760f1b0060a20480952470b"
+    },
+    {
+      "id": "5397.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5397.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5397.txt",
+      "split": "test",
+      "source_sha256": "cdc70136026fc1b0ce2ed167e470adc1dda950e074c82074868862c808582ead",
+      "reference_sha256": "dd4b9b9d67263b3b28c5c9d9454ceb5cc643ec03dec1bf31173d030aa265d6dc",
+      "normalized_source_sha256": "c3da0fd9fae37d3ff04f4e9fd1348d2b155177a8e29674cc99b93a15052abec2"
+    },
+    {
+      "id": "5471.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5471.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5471.txt",
+      "split": "test",
+      "source_sha256": "3c7807c008f47be6ddb43eb62590433279ab88ca3bad8a990f8a8086c2c4e716",
+      "reference_sha256": "366472fa782f340a20623f6d4b5d630c4cf22408ac9680fbf1218bfc00aa6359",
+      "normalized_source_sha256": "027d8db242cdba24ecc67575a3ad7e41d3829375ed1c965e2db175858b555f93"
+    },
+    {
+      "id": "5538.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5538.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5538.txt",
+      "split": "test",
+      "source_sha256": "02031405debdec9409a04d5bf4fba5c1288ee88de13e9e9469c81e5ce7e6943c",
+      "reference_sha256": "473ccc6bb93b4d41a2982b65bd563fd261e6a31703d35a3628baf6b7be806b3b",
+      "normalized_source_sha256": "381ec643fe8b2ca8982788e76fa9817e316454ead043d8d2b32e7e5c37c88503"
+    },
+    {
+      "id": "5597.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5597.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5597.txt",
+      "split": "test",
+      "source_sha256": "8e083a9b3d5bf6aef0d3590b8120bca84116fb03971d9c764a126929bdb984ef",
+      "reference_sha256": "0ba93af5827378ff79622a9fb79108aa3796e89c3a3437132351f0f9baecdf7c",
+      "normalized_source_sha256": "3fe50a459874c866296ae4488e543b815db22af99671678fa5882bd532fc3dd6"
+    },
+    {
+      "id": "5707.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5707.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5707.txt",
+      "split": "test",
+      "source_sha256": "cbbf7912110d9b6c505e1d39f32b1ae0f67487661199f08f48775b9e3e605a1c",
+      "reference_sha256": "e55981e1e40da32543a21df1a48e74f2a4389bc3bdff909b4c05f7d2b9cc0eef",
+      "normalized_source_sha256": "39590439105117bbacab59a5bdb1cde448be6a7ddc15cb4cc91456c27f758322"
+    },
+    {
+      "id": "5861.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5861.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5861.txt",
+      "split": "test",
+      "source_sha256": "49b3bee2de7c9b63615901076e2d6f2bfbd4582191ad69ca45c604c86cf14227",
+      "reference_sha256": "d03a5c2cea71c268a404225281f671d0759c4e0ffbafe0d9219d7d64d8a9f8c3",
+      "normalized_source_sha256": "81f449079376520254225e07a4a08c169f8b55dad36f378449ccb7bfe2c15de4"
+    },
+    {
+      "id": "5888.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5888.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5888.txt",
+      "split": "test",
+      "source_sha256": "26da23d247522b9a02f2cc99b416041057110fdfb939a877af77045b2cccd1c2",
+      "reference_sha256": "94e658045d3eea42931443c1cfcf9679f8ab5f5f1a807c419d4b3dff0bf32a14",
+      "normalized_source_sha256": "d8738e0f0df19a706e33d6f4f8d76de86aa13b2ddda8e316689a35028eaef274"
+    },
+    {
+      "id": "5937.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5937.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5937.txt",
+      "split": "test",
+      "source_sha256": "9828b810910439b9ca41e1b961872337c4a889b6189c5792526d5bf49a8795c8",
+      "reference_sha256": "b720777e57230235ad6fab752a1518abc5ea82f20bdc1529c5ae935a1c75ab1c",
+      "normalized_source_sha256": "3f13e733bf8aa5b5489e1da0aaef7f62eeb94d7a3ace6ce113ce6e37d596247d"
+    },
+    {
+      "id": "5994.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/5994.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/5994.txt",
+      "split": "test",
+      "source_sha256": "35c622e9ea9646a2fafb7a5ba295a79095278e9ab24b2b25def49ff5dabb7d8d",
+      "reference_sha256": "c1a685aa1dfbdc595ea5eac575c8df31aaf95ffcb9e99d08f33af7617c11fb67",
+      "normalized_source_sha256": "e397048d6aca757b3dc182ee3146e38c1f5f08bd81a3316725e012e969c24ba6"
+    },
+    {
+      "id": "6003.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6003.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6003.txt",
+      "split": "test",
+      "source_sha256": "0c2752a7c8a3b9961313d138428032b94846b510d501e0e4174547cfc9ab433e",
+      "reference_sha256": "8357f1a36aa52db7d9a0c46d39cd69627ab25d8d26cb59b30398a0e08e1cd3ef",
+      "normalized_source_sha256": "bde0acc745b3261c63ce361471797699cf18064748c2391dae558b171a142ec8"
+    },
+    {
+      "id": "6118.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6118.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6118.txt",
+      "split": "test",
+      "source_sha256": "89d1458d2d237475dde27e0214265105ffb6e98cc8a11ee189a2bcc1bc88eaba",
+      "reference_sha256": "67251dd01d9ee40992a0d35aecf71510745ac67e78c8d1984aa319bf86bdb5f0",
+      "normalized_source_sha256": "ebc53839ca84f32702dee6e0654fdce828b1ec58af228401ca3ac02770a2ab37"
+    },
+    {
+      "id": "6157.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6157.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6157.txt",
+      "split": "test",
+      "source_sha256": "85813707ae95dd78ea0095b8f75aef932c0be06de5df8d8827f165d8c9282b18",
+      "reference_sha256": "7db87f1cd9d50654ad5f3fc23ab4c5b45c3f02977efb7511a2039b581e7606b8",
+      "normalized_source_sha256": "1a15e0e3f29f532ea4e340d8d492ebb3c68856f16447bfeb3b8883b0b1e8cba7"
+    },
+    {
+      "id": "6245.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6245.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6245.txt",
+      "split": "test",
+      "source_sha256": "0dcf1741a8a98fcd0aeeb9ed0ee475773bc276753da4ac28e4d8cf7e1577bdd2",
+      "reference_sha256": "7525aea03229e43dedf59ec4cba81f1f7ba97765d3bbb335f9834aa3c172e0ea",
+      "normalized_source_sha256": "387500c9b97894c0ece35eb033edc08e4f23808083df96c63d73d46974ae8c08"
+    },
+    {
+      "id": "6270.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6270.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6270.txt",
+      "split": "test",
+      "source_sha256": "e509fafa4cc629c2fe05b168962680b36bcc97ed3942b54d9487cf8b6099c0b4",
+      "reference_sha256": "cce5299b64d3d04969946273a25b82284708b844e179434f5b08d08da8bb8c4f",
+      "normalized_source_sha256": "8ec8709a99b348391a0545e22304fb4ccc41ab352d1f3d724106312443071045"
+    },
+    {
+      "id": "6276.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6276.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6276.txt",
+      "split": "test",
+      "source_sha256": "7953294ab1cb8065ad6f2b6cfded091239c5ed6207480e071cc20ad3b3cc66ed",
+      "reference_sha256": "eb04c2cd94a0da3c19e324c0043c663eab3fb64ad11ead3ff145d05f92536725",
+      "normalized_source_sha256": "4d921146a8c2c0032e3a3afd7b193d9a3af226e4c8e26a6cee927ec305b2a0cc"
+    },
+    {
+      "id": "6413.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6413.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6413.txt",
+      "split": "test",
+      "source_sha256": "94d617083fdd2563e6dc76126bce28be428867bf1a45ce90b0177d6bbff307d2",
+      "reference_sha256": "492423aa49bd8739981033d457a2b7b4fe56b7b13bef2e2b88599e73962f7651",
+      "normalized_source_sha256": "44051a9796cb5b331246ef344e5ef42d918d7fda2953330160292d7995ce60b4"
+    },
+    {
+      "id": "652.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/652.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/652.txt",
+      "split": "test",
+      "source_sha256": "bdd7d86c2a02e7b17aac5bcc3d66c8dbd613ab7725d1433903520e22ad047b3d",
+      "reference_sha256": "816e704a6c6fc34d62ae82ce591dde51e6c393c24753fe8bbea6f0ae4e983b0c",
+      "normalized_source_sha256": "251fb8fa793d817971e94e2d605cb2aae0238c5bf3b7f75c54b174264d7ce4b3"
+    },
+    {
+      "id": "6521.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6521.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6521.txt",
+      "split": "test",
+      "source_sha256": "cd231a157bb310850fe6783dc7e8eb4c56ed06e224758ab6e58402168963b80e",
+      "reference_sha256": "7fd62754c37cca831c9e39947f8b7f9cc83891070d9591e98e16f8d0cc185851",
+      "normalized_source_sha256": "e8a9249e320aea48d78dc66ac15b07e9f3a6cb891751efe7adc6aedad89e04ce"
+    },
+    {
+      "id": "660.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/660.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/660.txt",
+      "split": "test",
+      "source_sha256": "bd5f625aab086299f5d9462f92cb5835dcd0a2b4a1a0bf81fc2c84ecdd48c464",
+      "reference_sha256": "c37fc152c735cb83e9fa60267e6071c80922c7922fdaf43dd99e2d2ba8955a14",
+      "normalized_source_sha256": "2db0e1a89e5f47406c0dcd3b920daef9c31d6acd7ddd9bde1920a502104ad8ad"
+    },
+    {
+      "id": "6622.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6622.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6622.txt",
+      "split": "test",
+      "source_sha256": "c32a2d7641dd70d7d2202f260865c8398778b6b8cc3bf165dd69a711e8930844",
+      "reference_sha256": "3710761cde648e18245b2980f68c80d0c7ecd9b2af6eeeff04bba72914a6152f",
+      "normalized_source_sha256": "6d24d0ff14bd2bc423e8f90668195931cbce0d76eb5037f333219707edd5094b"
+    },
+    {
+      "id": "6647.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6647.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6647.txt",
+      "split": "test",
+      "source_sha256": "21e65112bc9a7608696cc34471c42cfb6383948b9411b3e841147ff22852df3e",
+      "reference_sha256": "efe8ecb672148cbcf1ee962ca5db8bc843d87a72937cdcf3a4b8dcd5bca1eff0",
+      "normalized_source_sha256": "d9436bdc6600e6fec098e77ac5fb44862b32a9ec13d9d77d885762144ecccb5f"
+    },
+    {
+      "id": "6668.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6668.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6668.txt",
+      "split": "test",
+      "source_sha256": "aaa685fee36e2382bbc98f9027dce0b924d70635189ff0b19ee581dbc4470623",
+      "reference_sha256": "b56c142f7c3eca1bba42fb57f90b5a70c4f261fe6287a77d65de1d66d938cdd6",
+      "normalized_source_sha256": "1ae53fd8f64775c80e2e14d997f028189289f0bbc1ef4ba743c923189c61df7e"
+    },
+    {
+      "id": "6728.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6728.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6728.txt",
+      "split": "test",
+      "source_sha256": "3573739bb0503a88f707318237bc348617f4404595e320dac73c38e3e005bc97",
+      "reference_sha256": "adb3a765116c91df3c31aa364e1572b93c44d5405789c52dde5418991bc048c7",
+      "normalized_source_sha256": "87632d93affe2e52e9cc1b2aecca84357098ce23adc3e0871959e90961a64514"
+    },
+    {
+      "id": "6778.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6778.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6778.txt",
+      "split": "test",
+      "source_sha256": "e5af53d73a800958fb3d6356ac876c0f220dc974d8ff795a818474ec09e77d9c",
+      "reference_sha256": "ae9e0d47bfc23ca8924cefbd5e82906f0a0207acc1e4ffca1d4273b4c6f4470a",
+      "normalized_source_sha256": "5b1b2365b36ec8b07d7ba9d760cc0934954f4a9e24563e5ff66b0c2610848fd2"
+    },
+    {
+      "id": "6852.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6852.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6852.txt",
+      "split": "test",
+      "source_sha256": "aab577c225a1341b140bb1542fd6ceff3aa3adee9d53b37f31b92543a8d1e32f",
+      "reference_sha256": "5ad6fdcc50a4e619c13091adc96c000d58747b2c69f2d8bb0f7593ce81110181",
+      "normalized_source_sha256": "47c1b43a41956d3630133b404552b2514ac17047969380acdc42b7a031633185"
+    },
+    {
+      "id": "6881.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/6881.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/6881.txt",
+      "split": "test",
+      "source_sha256": "4cff2f41d9926e39f0a8248eb2762ae7233cd0dc8f947bfa79fc5ef51b410f25",
+      "reference_sha256": "8bc9249c423dd9ff3bed4a529fe2d128c39d9b5bb0ff6c74616243861a193395",
+      "normalized_source_sha256": "628c6ac17d5a3f76de5f2f0de40c04afba79635a8603afd556f72c69a334813f"
+    },
+    {
+      "id": "690.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/690.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/690.txt",
+      "split": "test",
+      "source_sha256": "c3defbc190c6b8d265e12d3057c68b0d46c13d47c184476c76676fb1752a65b3",
+      "reference_sha256": "a368f9ddb8914395ca91f0c5069282df0dd2d4fc4410d6666a63e1a38fea5653",
+      "normalized_source_sha256": "3fe5b52594ca43da973a136562269c11dceb1f0d4d9c29ceca36cd63c1feb85c"
+    },
+    {
+      "id": "7109.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/7109.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/7109.txt",
+      "split": "test",
+      "source_sha256": "24eb5581e0905f328d8f6f63b6d5610fb5c11f86151f0842b4a3ec1db25da497",
+      "reference_sha256": "f5f0cf110981607a231360d4cad1eeeae123d8e65ab6d8e0c76e7c6d30cd1ff6",
+      "normalized_source_sha256": "41e98b5ccb4b3b16cc78a61979984d92cb877f76f04635e02a72cfae1c967146"
+    },
+    {
+      "id": "7130.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/7130.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/7130.txt",
+      "split": "test",
+      "source_sha256": "14161f4b636f5c1b5ed3f00c7530fdb8c559d5437345f2cba5839859d8f0fba2",
+      "reference_sha256": "d462b2bcfe7b2a2c53bccc6f59d985b77f284ed52ad112ff50cdf7d8877ea3b1",
+      "normalized_source_sha256": "c41f9524cf3b536d7e6fc52186a0a9cc6cfad940da81f4118bb3d0152ac5c2cf"
+    },
+    {
+      "id": "715.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/715.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/715.txt",
+      "split": "test",
+      "source_sha256": "5d9d2bbc60d794ef50b10c09cd009789231eeca60bfb0d18e79665911fff3a5d",
+      "reference_sha256": "1949fe6e770df189a5268c367864489c016a139a3018416a56c343719216d76c",
+      "normalized_source_sha256": "94b63c639cbcf8e73594cc778a6090cdec073c7830b496861150feee9eee86ce"
+    },
+    {
+      "id": "78.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/78.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/78.txt",
+      "split": "test",
+      "source_sha256": "f0e44ba166477a295e3c4847898a3b862f661fe67692c8ce1bec0057759117f4",
+      "reference_sha256": "c628a84e942254c2f2528af58b04ef9de0c719a5a8f6433e942488d991ce9fac",
+      "normalized_source_sha256": "07ade2105805add53b954e3dd11922a44ab1141b9596c063a0f02f4985ad21c8"
+    },
+    {
+      "id": "784.txt",
+      "judgment_path": "dataset/IN-Abs/test-data/judgement/784.txt",
+      "summary_path": "dataset/IN-Abs/test-data/summary/784.txt",
+      "split": "test",
+      "source_sha256": "ea6382f9ef0d36b3e681b6737cbb9ed846cc1089b581395b98c217ae624a140c",
+      "reference_sha256": "c1c654769baf1902ee6cc1df286b09b1dc1b485983ff799e70980fb43c17cf95",
+      "normalized_source_sha256": "f6c0410cde597b1448d4383c722a2ad96ebd60082e270f6056c495c3fb6deea5"
+    }
+  ],
+  "methods": [
+    "pipeline_800",
+    "lead_800",
+    "pipeline_400",
+    "lead_400"
+  ],
+  "budgets": [
+    800,
+    400
+  ],
+  "primary_method": "pipeline_800",
+  "primary_metric": "rougeL_f1",
+  "serialization": "Displayed extract sentences in background, issue, reasoning, decision order; no captions, headings, warnings or omission suggestions",
+  "budget_policy": "Unmodified app soft budget: whole sentences/operative conditions may overflow. Baseline uses consecutive parsed opening sentences, allowing one overlong first sentence.",
+  "scorer": "rouge-score 0.1.2; default tokenizer; Porter stemming; case macro means; ROUGE-L sequence LCS, not ROUGE-Lsum",
+  "confidence": "95% case-bootstrap percentile intervals, 10000 resamples, seed 42; paired bootstrap for pipeline-minus-lead differences",
+  "failure_policy": "All 100 cases retained; generation failures score zero, reported separately; no silent exclusions",
+  "source_mode": "Original publisher TXT input through the production parser; no PDF/OCR assessment",
+  "test_status": "Reused official benchmark previously evaluated at Stage 3.6; current pipeline frozen before this run; not new blind or unseen-document accuracy",
+  "leakage": {
+    "archive_train_documents": 7030,
+    "paired_train_documents": 7028,
+    "recorded_selector_train_dev_ids": 1040,
+    "exact_normalized_test_train_overlaps": [],
+    "limits": "No semantic near-duplicate or upstream encoder pretraining/corpus overlap clearance; exact text audit only"
+  },
+  "automatic_legal_accuracy": false,
+  "weights_retrained": false,
+  "protocol_id": "9a2493ca69332bb32281c8decf7ed806a1d2a7ab2c5bb475e736f13ee9525b6e"
+}

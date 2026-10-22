@@ -1,0 +1,11 @@
+{
+  "missing_section_counts": {
+    "issue": 9,
+    "decision": 47,
+    "reasoning": 17
+  },
+  "scored_sentences": 15606,
+  "long_target_sentences": 38,
+  "empty_summaries": 0,
+  "scope": "Post-run diagnostic counts only; no inference changes or retuning"
+}
