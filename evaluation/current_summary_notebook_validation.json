@@ -1,0 +1,8 @@
+{
+  "notebook": "03_model_evaluation.ipynb",
+  "executed": true,
+  "isolated_kernel": true,
+  "official_training_run": false,
+  "seconds": 13.66,
+  "purpose": "Verify presentation notebook renders the recorded current benchmark and historical comparisons"
+}

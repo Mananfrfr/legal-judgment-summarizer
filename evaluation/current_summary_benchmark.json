@@ -1,0 +1,323 @@
+{
+  "protocol_id": "9a2493ca69332bb32281c8decf7ed806a1d2a7ab2c5bb475e736f13ee9525b6e",
+  "case_count": 100,
+  "complete": true,
+  "automatic_legal_accuracy": false,
+  "score_scale": "0 to 1; multiply by 100 for ROUGE points, never interpret as percent legally correct",
+  "primary_method": "pipeline_800",
+  "primary_metric": "rougeL_f1",
+  "methods": {
+    "pipeline_800": {
+      "rouge1_precision": {
+        "mean": 0.6685657381928037,
+        "ci95_low": 0.6396649199314348,
+        "ci95_high": 0.6966931301055804,
+        "cases": 100
+      },
+      "rouge1_recall": {
+        "mean": 0.304229739630774,
+        "ci95_low": 0.2706880133380495,
+        "ci95_high": 0.3392770017221809,
+        "cases": 100
+      },
+      "rouge1_f1": {
+        "mean": 0.3741928459731307,
+        "ci95_low": 0.346916733476793,
+        "ci95_high": 0.4017904028224351,
+        "cases": 100
+      },
+      "rouge2_precision": {
+        "mean": 0.3348856147234451,
+        "ci95_low": 0.30444849786272826,
+        "ci95_high": 0.36572299783419177,
+        "cases": 100
+      },
+      "rouge2_recall": {
+        "mean": 0.14658230926610424,
+        "ci95_low": 0.1271312648695405,
+        "ci95_high": 0.1681118374525876,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": 0.18253067578217366,
+        "ci95_low": 0.16437925288651187,
+        "ci95_high": 0.20184070553425187,
+        "cases": 100
+      },
+      "rougeL_precision": {
+        "mean": 0.3918197838207798,
+        "ci95_low": 0.365776596332214,
+        "ci95_high": 0.41848241602495273,
+        "cases": 100
+      },
+      "rougeL_recall": {
+        "mean": 0.16751010650746717,
+        "ci95_low": 0.1492835236766485,
+        "ci95_high": 0.18721662659857533,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": 0.20939650068680263,
+        "ci95_low": 0.1940852434140379,
+        "ci95_high": 0.22580187816268188,
+        "cases": 100
+      },
+      "failures": 0,
+      "mean_summary_words": 308.33,
+      "over_budget_cases": 1
+    },
+    "lead_800": {
+      "rouge1_precision": {
+        "mean": 0.49225245862144945,
+        "ci95_low": 0.4594483454490824,
+        "ci95_high": 0.5249330766838133,
+        "cases": 100
+      },
+      "rouge1_recall": {
+        "mean": 0.5798742612734744,
+        "ci95_low": 0.5439617560731514,
+        "ci95_high": 0.6158916764398129,
+        "cases": 100
+      },
+      "rouge1_f1": {
+        "mean": 0.4851215427033597,
+        "ci95_low": 0.4625980660818192,
+        "ci95_high": 0.5066548901450751,
+        "cases": 100
+      },
+      "rouge2_precision": {
+        "mean": 0.24169531105875905,
+        "ci95_low": 0.21848474392676173,
+        "ci95_high": 0.26510009438451415,
+        "cases": 100
+      },
+      "rouge2_recall": {
+        "mean": 0.2865947916412307,
+        "ci95_low": 0.2567318492959009,
+        "ci95_high": 0.3186476017058312,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": 0.23809743330507946,
+        "ci95_low": 0.21776159906263284,
+        "ci95_high": 0.2597790487584993,
+        "cases": 100
+      },
+      "rougeL_precision": {
+        "mean": 0.24088536950596542,
+        "ci95_low": 0.22320021814162558,
+        "ci95_high": 0.2586615980889489,
+        "cases": 100
+      },
+      "rougeL_recall": {
+        "mean": 0.2968842385854626,
+        "ci95_low": 0.26823090695530954,
+        "ci95_high": 0.32848201404039806,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": 0.2412609348631516,
+        "ci95_low": 0.2244661038876872,
+        "ci95_high": 0.2590942595600262,
+        "cases": 100
+      },
+      "failures": 0,
+      "mean_summary_words": 768.9,
+      "over_budget_cases": 0
+    },
+    "pipeline_400": {
+      "rouge1_precision": {
+        "mean": 0.6789242311704915,
+        "ci95_low": 0.6521173902283103,
+        "ci95_high": 0.705278708256051,
+        "cases": 100
+      },
+      "rouge1_recall": {
+        "mean": 0.26146189430374633,
+        "ci95_low": 0.2303903701800474,
+        "ci95_high": 0.2944772347210744,
+        "cases": 100
+      },
+      "rouge1_f1": {
+        "mean": 0.33854358641724597,
+        "ci95_low": 0.31150563551898103,
+        "ci95_high": 0.36584048342566755,
+        "cases": 100
+      },
+      "rouge2_precision": {
+        "mean": 0.33422815311626536,
+        "ci95_low": 0.30483840614747726,
+        "ci95_high": 0.3647066779449426,
+        "cases": 100
+      },
+      "rouge2_recall": {
+        "mean": 0.12376450514538137,
+        "ci95_low": 0.10601637623681132,
+        "ci95_high": 0.14403227175494032,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": 0.16154734446945482,
+        "ci95_low": 0.1449127423102851,
+        "ci95_high": 0.17969196217428585,
+        "cases": 100
+      },
+      "rougeL_precision": {
+        "mean": 0.4083575492507579,
+        "ci95_low": 0.38295556324204993,
+        "ci95_high": 0.43383610572134973,
+        "cases": 100
+      },
+      "rougeL_recall": {
+        "mean": 0.14810741337935746,
+        "ci95_low": 0.13061568472806287,
+        "ci95_high": 0.1674227211498025,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": 0.19430277855718778,
+        "ci95_low": 0.17923789843080434,
+        "ci95_high": 0.21021683345391828,
+        "cases": 100
+      },
+      "failures": 0,
+      "mean_summary_words": 248.64,
+      "over_budget_cases": 9
+    },
+    "lead_400": {
+      "rouge1_precision": {
+        "mean": 0.5783219581256995,
+        "ci95_low": 0.5502022449394581,
+        "ci95_high": 0.60516780972022,
+        "cases": 100
+      },
+      "rouge1_recall": {
+        "mean": 0.3644560344394548,
+        "ci95_low": 0.3328985942811532,
+        "ci95_high": 0.3976645710431,
+        "cases": 100
+      },
+      "rouge1_f1": {
+        "mean": 0.40910102158009215,
+        "ci95_low": 0.3848444363850415,
+        "ci95_high": 0.43320744268834693,
+        "cases": 100
+      },
+      "rouge2_precision": {
+        "mean": 0.2583785547791282,
+        "ci95_low": 0.23366364434399445,
+        "ci95_high": 0.2840017122091747,
+        "cases": 100
+      },
+      "rouge2_recall": {
+        "mean": 0.16126840107227572,
+        "ci95_low": 0.13883284831031076,
+        "ci95_high": 0.18637802376109255,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": 0.18118735375452452,
+        "ci95_low": 0.16091451770152215,
+        "ci95_high": 0.2028390486603549,
+        "cases": 100
+      },
+      "rougeL_precision": {
+        "mean": 0.2865607567101481,
+        "ci95_low": 0.26861972284047125,
+        "ci95_high": 0.3049377141158968,
+        "cases": 100
+      },
+      "rougeL_recall": {
+        "mean": 0.18189041977075246,
+        "ci95_low": 0.16162088870875738,
+        "ci95_high": 0.20488777484538648,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": 0.2021113587495324,
+        "ci95_low": 0.186561368330515,
+        "ci95_high": 0.2190827735364062,
+        "cases": 100
+      },
+      "failures": 0,
+      "mean_summary_words": 373.99,
+      "over_budget_cases": 0
+    }
+  },
+  "paired_pipeline_minus_lead": {
+    "800": {
+      "rouge1_f1": {
+        "mean": -0.11092869673022915,
+        "ci95_low": -0.14224109294672707,
+        "ci95_high": -0.07937551300733095,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": -0.05556675752290578,
+        "ci95_low": -0.07900296559616662,
+        "ci95_high": -0.03204675648940345,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": -0.031864434176348995,
+        "ci95_low": -0.051378656182091594,
+        "ci95_high": -0.013148611633471585,
+        "cases": 100
+      }
+    },
+    "400": {
+      "rouge1_f1": {
+        "mean": -0.07055743516284628,
+        "ci95_low": -0.10102036755154853,
+        "ci95_high": -0.040831282642546034,
+        "cases": 100
+      },
+      "rouge2_f1": {
+        "mean": -0.01964000928506976,
+        "ci95_low": -0.043912489301560886,
+        "ci95_high": 0.0038221847193095995,
+        "cases": 100
+      },
+      "rougeL_f1": {
+        "mean": -0.007808580192344554,
+        "ci95_low": -0.027764490996017254,
+        "ci95_high": 0.010786829572965829,
+        "cases": 100
+      }
+    }
+  },
+  "audit": {
+    "pipeline_800": {
+      "exact_source_passes": 100,
+      "missing_section_cases": 51
+    },
+    "pipeline_400": {
+      "exact_source_passes": 100,
+      "missing_section_cases": 51
+    }
+  },
+  "runtime": {
+    "protocol_id": "9a2493ca69332bb32281c8decf7ed806a1d2a7ab2c5bb475e736f13ee9525b6e",
+    "python": "3.11.8",
+    "torch": "2.6.0+cu124",
+    "device": "cuda",
+    "cuda": "12.4",
+    "gpu": "NVIDIA GeForce RTX 2050",
+    "transformers": "4.57.6",
+    "numpy": "2.4.6",
+    "rouge_score": "0.1.2",
+    "batch_size": 3,
+    "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615",
+    "cpu_threads": 4,
+    "precision": "Production CUDA autocast",
+    "deterministic_algorithms": false
+  },
+  "limitations": [
+    "Reused official benchmark previously evaluated at Stage 3.6; current pipeline frozen before this run; not new blind or unseen-document accuracy",
+    "Original publisher TXT input through the production parser; no PDF/OCR assessment",
+    "No semantic near-duplicate or upstream encoder pretraining/corpus overlap clearance; exact text audit only",
+    "ROUGE measures lexical/reference overlap; it cannot establish factual, attribution or legal correctness.",
+    "Bootstrap intervals describe variation across these cases, not training exposure, domain shift, annotation uncertainty or numerical runtime equivalence.",
+    "App soft budgets can exceed requested length; reported length and precision/recall expose this tradeoff."
+  ]
+}

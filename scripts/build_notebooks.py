@@ -172,7 +172,19 @@ No model wins every metric. Report the entire comparison, not just the best numb
 display(results.round(4))
 results.plot.bar(x='method', y=['rouge1_f1', 'rouge2_f1', 'rougeL_f1'], figsize=(10, 4),
                  title='Recorded Stage 3.6 official test (100 cases)')
-'''),md('''## 3. Why those ROUGE scores cannot be assigned to today's app
+'''),md('''## 3. Current 4.6 pipeline: measured automatic scores
+This table is from an actual run of the frozen current pipeline on all 100 official IN-Abs test judgments. The primary setting is `pipeline_800`; `lead_800` is the opening-sentence baseline. The 400-word rows are a secondary comparison.
+Scores are ROUGE F1 points on a 0–100 scale, not percentages of legally correct summaries. The test set was used before, so this is a reused benchmark. The code and weights were not tuned during this run. Read `docs/current_summary_benchmark.md` for lengths, failures, paired differences and limitations.
+'''),code('''measured = json.loads((ROOT / 'evaluation/current_summary_benchmark.json').read_text())
+rows = []
+for method, values in measured['methods'].items():
+    interval = values['rougeL_f1']
+    rows.append({'method': method, 'ROUGE-1': 100 * values['rouge1_f1']['mean'],
+                 'ROUGE-2': 100 * values['rouge2_f1']['mean'], 'ROUGE-L': 100 * interval['mean'],
+                 'L lower 95%': 100 * interval['ci95_low'], 'L upper 95%': 100 * interval['ci95_high']})
+display(pd.DataFrame(rows).round(2))
+print('Cases:', measured['case_count'], '| Legal accuracy measured:', measured['automatic_legal_accuracy'])
+'''),md('''## 4. Why historical scores and source checks are separate
 The app now scores the full extracted judgment in overlapping windows and builds structured sections with evidence checks. That changes the inference protocol. The Stage 3.6 numbers describe the earlier fixed-budget experiment, not the current app.
 All extracted sentences being scored means coverage of extracted candidates; it does not prove flawless PDF extraction or complete summaries.
 '''),code('''review = json.loads((ROOT / 'evaluation/current_pipeline_review.json').read_text())
@@ -180,14 +192,14 @@ display(pd.DataFrame([{'file': x['file'], 'scored': x['scored'], 'extracted': x[
     'exact_evidence': x['exact_evidence'], 'critical_decision_failure': x['critical_decision_failure']}
     for x in review['documents']]))
 print('Human legal accuracy measured:', review['human_accuracy_measured'])
-'''),md('''## 4. Exact evidence is necessary, not sufficient
+'''),md('''## 5. Exact evidence is necessary, not sufficient
 One separate case put an earlier High Court ruling in the current decision section. Another missed the final decision section. Both can still contain copied source text. **Two of three separate cases had serious decision-section failures.** The comparison was performed by the assistant, not independent legal annotators; training overlap is unknown.
-The frozen evaluation was not retuned after inspecting it. These now-inspected cases must become development examples if we use them to fix the next version.
+This table records the original failures. Those cases later became development examples for the 4.6 decision fixes; their targeted checks now pass. This does not establish complete legal correctness. See `docs/decision_upgrade.md`.
 '''),code('''for item in review['documents']:
     print(item['file'])
     print(item['finding'])
     print()
-'''),md('''## 5. A simple ROUGE demonstration
+'''),md('''## 6. A simple ROUGE demonstration
 The following invented pair illustrates lexical overlap only. A high score can coexist with a changed condition or outcome.
 '''),code('''from rouge_score import rouge_scorer
 scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
@@ -196,7 +208,7 @@ prediction = 'The appeal is dismissed and payment is due within six weeks.'
 display(pd.DataFrame({name: value._asdict() for name, value in scorer.score(reference, prediction).items()}).T)
 print('One changed word reverses the outcome. ROUGE alone cannot validate this summary.')
 '''),md('''### What to say, and what not to claim
-“The recorded role-classification dev macro F1 improved from about 0.39 for logistic regression to 0.65 for the document BiLSTM. The earlier 100-case summarization test reached roughly 0.52 ROUGE-1 F1. The current app has source tracing, but separate review exposed decision errors, so I present it as a research assistant.”
+“The recorded role-classification dev macro F1 improved from about 0.39 for logistic regression to 0.65 for the document BiLSTM. The earlier 100-case summarization test reached roughly 0.52 ROUGE-1 F1. The current pipeline has its own measured ROUGE results above, with a baseline and confidence intervals. Neither result is legal accuracy, so I present the app as a research assistant.”
 
 Do not say “83% summary accuracy,” “error-free,” “best model,” or “production ready.” 83% is approximately a role-classification development accuracy, a different task.
 ''')]

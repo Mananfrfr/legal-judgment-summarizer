@@ -2,6 +2,8 @@
 
 Version **4.6.0** improves the review-assisted pipeline. It does not retrain the neural model. Recorded sentence-role DEV accuracy remains **83.12%**, macro F1 **65.41%**; current end-to-end legal accuracy is **not independently measured**.
 
+**Subsequent full benchmark:** the frozen current pipeline was evaluated on 100 official IN-Abs test judgments. Default-setting ROUGE-L F1 is **20.94**, below the opening-sentence baseline's **24.13**; 47 briefs have an empty decision section. The targeted fixes below do not establish overall summarization improvement. [Full benchmark and confidence intervals](current_summary_benchmark.md).
+
 ## What changed and why
 
 1. **Read the real final decision.** Optional commas in “The appeal is, accordingly, allowed” and batch-of-matters wording no longer hide the disposition. Only temporary matching text is normalized; displayed evidence remains verbatim.

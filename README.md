@@ -1,6 +1,6 @@
 # Legal Judgment Summarizer
 
-**Version 4.6.0 — review-assisted research app.** Improved final-decision attribution, qualification retention and recovery from an unclosed inline quotation in a structured PDF. **86 automated tests pass.** Trained weights are unchanged; no new unseen-document accuracy is claimed. [Changes, measured results and remaining errors](docs/decision_upgrade.md).
+**Version 4.6.0 — review-assisted research app.** Improved final-decision attribution, qualification retention and recovery from an unclosed inline quotation in a structured PDF. **91 automated tests pass**, including evaluation checks. Trained weights are unchanged; no new unseen-document accuracy is claimed. [Changes, measured results and remaining errors](docs/decision_upgrade.md).
 
 An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
 
@@ -22,6 +22,18 @@ Read the [faculty walkthrough and viva questions](docs/faculty_walkthrough.md), 
 | [04_final_pipeline](notebooks/04_final_pipeline.ipynb) | New document → source evidence → structured brief → review | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/04_final_pipeline.ipynb) |
 
 Each notebook has one setup cell. `%%project` runs ordinary Python in a persistent isolated kernel, keeping legacy Hugging Face dependencies out of Colab's base environment. All five default paths were executed locally through this mechanism; a fresh hosted Colab installation and full retraining were not run during consolidation. The first hosted setup can take several minutes.
+
+## Current summarization measurement
+
+The current 4.6.0 pipeline was run on **all 100 official IN-Abs test judgments** at the app's default 800-word target:
+
+| ROUGE-1 F1 | ROUGE-2 F1 | ROUGE-L F1 (95% interval) |
+|---:|---:|---:|
+| 37.42 | 18.25 | 20.94 (19.41–22.58) |
+
+Scores are on a 0–100 scale; they are **not summary-correctness percentages**. The current structured pipeline scores below the opening-sentence baseline on ROUGE-L. These results do not establish a reference-overlap improvement from the pipeline. The decision fixes addressed specific attribution errors; they did not establish better overall summarization. The test set was previously used in Stage 3.6, so this is a reused benchmark. [Full baseline comparison, confidence intervals and limitations](docs/current_summary_benchmark.md).
+
+The default briefs averaged 308 words despite an 800-word target, and 47/100 had an empty decision section. These coverage limitations remain even though exact-source checks pass.
 
 ## What the recorded experiments show
 
@@ -96,7 +108,7 @@ python scripts/validate_notebooks.py
 python scripts/validate_notebooks.py --word-bilstm-smoke
 ```
 
-**86 automated tests passed** for the 4.6 upgrade (71 at original consolidation). All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
+**91 automated tests passed** after adding the current-summary evaluation (86 for the decision upgrade; 71 at original consolidation). All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
 
 ## References and license
 

@@ -6,6 +6,8 @@ A live localhost HTTP smoke check also passed: version 4.6.0 loaded the verified
 
 The rest of this page records the **original 21 October consolidation**, not the revised 4.6 implementation.
 
+**Current-summary evaluation:** 91 tests pass, including denominator/failure handling and bootstrap checks. All 100 official test cases were processed under a frozen protocol. See [the actual results](current_summary_benchmark.md); these are automatic overlap scores, not legal accuracy.
+
 ## Verified
 
 - 71 automated tests pass: the original 62 pipeline/app checks plus nine teaching-workflow checks. The additions cover document-split leakage, baseline fitting, no-overwrite protection, same-document context packing, padding masks, CRF versus brute-force calculation, budgeted weak labels, real one-epoch fixture training for softmax/CRF heads and all four selector conditions.
