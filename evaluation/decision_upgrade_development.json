@@ -1,5 +1,5 @@
 {
-  "candidate": "4.6.0-preview",
+  "candidate": "4.6.0",
   "evaluation_kind": "inspected development regression; NOT independent or unseen evaluation",
   "weights_retrained": false,
   "predictions_reused_after_hash_validation": true,

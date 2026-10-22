@@ -1,44 +1,55 @@
-# Decision extraction candidate — 22 October 2026
+# Decision extraction upgrade — 22 October 2026
 
-This branch is **4.6.0-preview**, a targeted pipeline revision. The released app and main branch remain Stage 4.5. Model weights were not retrained; the recorded role-classification accuracy remains **83.12% on DEV**, with macro F1 **0.6541**. There is no independently measured end-to-end summarizer accuracy.
+Version **4.6.0** improves the review-assisted pipeline. It does not retrain the neural model. Recorded sentence-role DEV accuracy remains **83.12%**, macro F1 **65.41%**; current end-to-end legal accuracy is **not independently measured**.
 
-## What was wrong
+## What changed and why
 
-1. The disposition matcher did not recognize optional commas in `The appeal is, accordingly, allowed.` It also missed a `present batch of matters` subject.
-2. Passive historical wording such as `dismissed by a Division Bench of the High Court` could become the current-decision anchor. This could select early procedural history while omitting the actual final relief.
+1. **Read the real final decision.** Optional commas in “The appeal is, accordingly, allowed” and batch-of-matters wording no longer hide the disposition. Only temporary matching text is normalized; displayed evidence remains verbatim.
+2. **Separate earlier rulings and proposals.** Passive earlier-court reports cannot independently anchor the current decision. “Ought to be dismissed” is a proposal, not a completed disposition. Explicit current reversals remain eligible.
+3. **Keep important qualifications.** Adjacent court statements that no view is expressed on the merits stay with the final decision. Attribution checks prevent a party's claim from becoming a court qualification. Existing conditions, amounts and deadlines remain grouped.
+4. **Recover a swallowed final PDF section.** One 111-page judgment had an unclosed inline dictionary quotation. Recovery requires native PDF geometry, an established Roman outline, matching font/margin and a later numbered final heading. It does not reset ordinary block quotations, arbitrary headings or plain-text outlines. The output explicitly requests attribution review; this heuristic cannot prove authorship.
+5. **Make the app easier to launch and verify.** `Start-App.ps1` checks model paths and starts localhost with the available isolated environment. Health reports the actual pipeline version.
 
-## Candidate changes
+The affected inference modules are `stage44_source.py`, `stage44_attribution.py` and `stage44_brief.py`. Encoder, selector, learned features, weights and model-window scoring are unchanged. The four presentation notebooks remain concise; Notebook 04 points to these changes.
 
-- Normalize commas only in temporary cue-matching text. Stored sentences, character offsets, amounts and source evidence remain verbatim.
-- Recognize the narrow batch/group-of-matters disposition form.
-- Identify passive earlier-court dispositions in attribution and reject them as independent current-order anchors. An explicit current reversal remains eligible.
-- Retain existing paragraph-level conditions, qualifications and source checks.
+## Measured verification
 
-The changes concern `stage44_attribution.py` and `stage44_brief.py`. No encoder, selector, PDF parser, learned feature or training hyperparameter changed.
+| Check | Before | Revised | Interpretation |
+|---|---:|---:|---|
+| Automated suite | 71 at consolidation | 86 pass | Software regression tests, including adversarial attribution/quote cases |
+| Three previously inspected judgments | 1/3 | 3/3 | Specified decision checks only |
+| Earlier ten development judgments | 29/29 | 29/29 | Specified content checks retained |
+| Earlier reasoning/review checks | 15/15 | 15/15 | Existing review regressions retained |
+| Four additional judgments | 2/4 | 4/4 after tuning | Specified operative-text coverage, not overall correctness or unseen accuracy |
 
-## Verification
+The four additional official-source PDFs total **228 pages and 1,679 sentences**. All sentences were scored with the actual trained model. Baseline, frozen candidate `bbcb718` and revised rules use identical predictions, with source/sentence hashes verified. No new weights were trained. The source targets were recorded after reading the final source pages and before inspecting model outputs. The purposive sample was not random, independent or proven absent from training; search snippets exposed some outcomes. First-run baseline and candidate each passed 2/4. Those failures motivated the revision, so all four are now **development cases**.
 
-- **76 automated tests passed**, including five new test methods covering comma-separated outcomes, passive reports, conditional relief, batch orders, negation, submissions, questions and explicit reversals.
-- On the three previously inspected judgments, the specified decision checks passed for **1/3 baseline outputs and 3/3 candidate outputs**. These counts describe only the specified checks, not correctness of the entire summaries.
-- The pension case now includes dismissal, Medical Board/Tribunal qualifications, the fifteen-year condition and no-costs disposition. The detention case now includes the current setting-aside order, conditional release, appeal allowance and costs deadline instead of the earlier High Court dismissal.
-- All selected source spans still match the extracted text. The original ten development documents retain **29/29 targeted checks**, plus **15/15 review checks**.
-- Cached model predictions were reused only after validating source, sentence, model-module and encoder hashes. This is a controlled comparison of extraction rules using the same predictions, not a new neural-model run.
+The first run missed the Cuddalore no-merits qualification and selected earlier reported proceedings in APTEL. The revision retains the qualification and selects APTEL's page-111 final order and other-remedies qualification. Source matching passes for all selected evidence in these checks; source matching alone does not establish legal correctness.
 
-See [three-case report](../evaluation/decision_upgrade_development.json), [earlier document checks](../evaluation/decision_upgrade_previous_documents.json), and [earlier review checks](../evaluation/decision_upgrade_previous_review.json).
+Reports: [three cases](../evaluation/decision_upgrade_development.json), [earlier ten](../evaluation/decision_upgrade_previous_documents.json), [review checks](../evaluation/decision_upgrade_previous_review.json), [four-case before/after report with source URLs and hashes](../evaluation/additional_validation_results.json), [selection plan](../evaluation/additional_validation_plan.json), [source targets](../evaluation/additional_source_targets.json).
 
-## What this does not establish
+## Remaining errors and limits
 
-All these documents have now been inspected and are development data. The original three-case review remains unchanged as historical evidence. Fixing these examples does not establish generalization or a new accuracy percentage. Remaining problems include issue selection, the Section 19 reasoning omission in the third case, quotation/attribution ambiguity, OCR and uncalibrated confidence. Even a brief with no automatic warning still requires human review.
+- The APTEL **issue section still selects a question from a cited case**. Correcting its decision does not correct the whole brief.
+- The earlier Section 19 reasoning omission remains outside this decision-focused fix.
+- OCR, quotations, attribution and long-sentence truncation can still cause errors. The model ranks the first 192 target tokens for long sentences; evidence retains the complete source text.
+- Independent human completeness/attribution annotation and a new untouched evaluation set remain necessary for a general accuracy claim. No-warning output also needs review.
 
-Before promoting the candidate, obtain independent attribution/completeness annotations and assess a new untouched document set. Measure current-decision correctness, retained conditions, unsupported attribution and omissions alongside ROUGE. Improvements to role macro F1 should be evaluated separately; CRF and weighted-loss experiments have already been tried and did not beat the original macro F1.
+This release is suitable for a faculty demonstration and assisted review. It is not an independently validated autonomous legal-summary service. The original failed outputs/review remain historical evidence, not erased results.
 
-## Reproduce the three-case development replay
-
-Use the original local PDFs and frozen Stage 4.5 prediction/summary files. The replay fails if their hashes do not match; it does not silently use different weights.
+## Reproduce
 
 ```bash
-python scripts/evaluate_decision_upgrade.py --pdf-dir PATH_TO_PDFS --cache-dir PATH_TO_FROZEN_RESULTS --output outputs/new_decision_replay
 python -m unittest discover -s tests -v
+python scripts/evaluate_decision_upgrade.py --pdf-dir PATH_TO_ORIGINAL_PDFS --cache-dir PATH_TO_FROZEN_RESULTS --output outputs/new_decision_replay
 ```
 
-This preview is kept separate from the faculty release while broader evaluation remains outstanding.
+For the four public-source cases, use `scripts/run_additional_validation.py`: `--mode prepare` downloads and freezes source/module hashes; `--mode score --encoder models/encoder --bundle models/stage4_english_model_bundle.zip` scores them; `--mode replay --label NAME --source-dir PATH_TO_SRC` compares extraction rules with those cached scores. Supply `--plan evaluation/additional_validation_plan.json --output outputs/additional_validation` for each command. Use separate output folders for new experiments. To reproduce the historical first run, check out `bbcb718` source before preparation/scoring; baseline source is `10099ab`. Keep the runner from 4.6 and pass `--source-dir` explicitly. Some environments may need to download the official APTEL PDF through their browser because of issuer-chain configuration; never disable TLS verification.
+
+The comparison report expects labels `baseline`, `candidate_initial`, and `revised_final`:
+
+```bash
+python scripts/report_additional_validation.py --runs outputs/additional_validation --output evaluation/additional_validation_results.json
+```
+
+Regeneration requires the original frozen run files or the corresponding source versions, not merely running current rules three times. Older supplied PDFs/predictions remain local; the public report provides their checksums without publishing private uploads.

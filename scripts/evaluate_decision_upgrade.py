@@ -8,7 +8,7 @@ import argparse,hashlib,json,sys
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from stage44_source import read_document
-from stage44_brief import build_brief,audit_brief,render_markdown
+from stage44_brief import build_brief,audit_brief,render_markdown,VERSION
 
 TARGETS={
     '129_2025':{
@@ -66,7 +66,7 @@ def main():
                      'decision_source_pages':sorted({s['page'] for s in result['sections']['decision']}),
                      'flags':result['audit']['flags']})
         print(pdf.name,'baseline',passed(before),'candidate',passed(after),'source',result['audit']['exact_source_check_passed'],flush=True)
-    report={'candidate':'4.6.0-preview','evaluation_kind':'inspected development regression; NOT independent or unseen evaluation',
+    report={'candidate':VERSION,'evaluation_kind':'inspected development regression; NOT independent or unseen evaluation',
             'weights_retrained':False,'predictions_reused_after_hash_validation':True,'legal_accuracy_measured':False,
             'checks_cover':'Selected final-decision wording and specified conditions only; not complete judgment quality',
             'remaining_work':'Independent attribution/completeness review and a new untouched evaluation set; Section 19 reasoning omission remains outside this fix',

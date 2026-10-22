@@ -1,14 +1,14 @@
 # Legal Judgment Summarizer
 
-**Candidate branch: 4.6.0-preview.** This branch tests final-decision extraction fixes; the trained weights are unchanged. It passed 76 automated tests and targeted development regressions, but has no new unseen-document accuracy measurement. [Changes and evaluation](docs/decision_upgrade.md). The released presentation version remains on `main`.
+**Version 4.6.0 — review-assisted research app.** Improved final-decision attribution, qualification retention and recovery from an unclosed inline quotation in a structured PDF. **86 automated tests pass.** Trained weights are unchanged; no new unseen-document accuracy is claimed. [Changes, measured results and remaining errors](docs/decision_upgrade.md).
 
 An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
 
-The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model and the Stage 4.5 inference engine are preserved.
+The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model is preserved; the inference pipeline includes the documented 4.6 decision-extraction fixes.
 
 **Want to see the early ML code in full?** Open [00_classical_ml_and_word_bilstm](notebooks/00_classical_ml_and_word_bilstm.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/00_classical_ml_and_word_bilstm.ipynb)). This optional fifth notebook shows TF-IDF, majority baseline, KNN, logistic regression, SVM, error analysis, saved-model prediction and word-level BiLSTM training step by step. [Why the other notebooks are short and where the full code lives](docs/code_map.md).
 
-**Research preview:** the app requires human review. A separate three-judgment check found two serious decision-section failures. Exact source matching is not legal accuracy. [Read the evaluation](docs/current_pipeline_evaluation.md).
+**Research preview:** the app requires human review. The original three-judgment check found two serious decision-section failures; their specified decision checks now pass after development fixes. Issue selection and reasoning omissions remain. Exact source matching is not legal accuracy. [Original evaluation](docs/current_pipeline_evaluation.md) · [4.6 follow-up](docs/decision_upgrade.md).
 
 ## Start here for the faculty presentation
 
@@ -34,7 +34,7 @@ Each notebook has one setup cell. `%%project` runs ordinary Python in a persiste
 | Frozen encoder + document BiLSTM | DEV | .6541 | .8237 |
 | Frozen encoder + document BiLSTM + CRF | DEV | .6516 | .8239 |
 
-These are saved experiment results, not fresh reruns. [Full role table](evaluation/role_results.csv).
+The best recorded role-classifier DEV accuracy is **83.12%**, with macro F1 **65.41%**. This measures sentence-role classification, not whole-summary correctness. These are saved experiment results, not fresh reruns. [Full role table](evaluation/role_results.csv).
 
 ![Recorded development macro F1 across role-classification experiments](docs/images/recorded_results_1.png)
 
@@ -42,7 +42,7 @@ The earlier Stage 3.6 official test evaluated six methods on 100 IN-Abs cases, u
 
 ![Recorded summary-overlap scores on 100 official test cases](docs/images/recorded_results_2.png)
 
-The current app uses full-document windows and structured evidence rules, so those older ROUGE scores do not measure its current performance. The three separate current-pipeline checks are reported independently. No general human legal-accuracy percentage is claimed.
+The current app uses full-document windows and structured evidence rules, so those older ROUGE scores do not measure its current performance. Three previously inspected cases and four additional source-reviewed judgments have separate decision-coverage reports; all are now development cases. No general human legal-accuracy percentage is claimed.
 
 ## Run locally
 
@@ -58,6 +58,8 @@ python -m pip check
 python scripts/download_models.py
 python src/stage44_app.py
 ```
+
+On Windows, after setup you can also run `powershell -ExecutionPolicy Bypass -File .\Start-App.ps1`. The launcher checks model paths and reuses this project's existing local environment when available.
 
 Open **http://127.0.0.1:7861** on the same computer. Keep the terminal running. The app loads `models/encoder` and `models/stage4_english_model_bundle.zip` by default; alternatively set `LEGAL_ENCODER_DIR` and `LEGAL_MODEL_BUNDLE`. Install Tesseract separately if you need OCR. Use native-text mode for searchable PDFs.
 
@@ -94,7 +96,7 @@ python scripts/validate_notebooks.py
 python scripts/validate_notebooks.py --word-bilstm-smoke
 ```
 
-**71 automated tests passed** during consolidation. All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
+**86 automated tests passed** for the 4.6 upgrade (71 at original consolidation). All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
 
 ## References and license
 

@@ -24,7 +24,7 @@ The historical benchmark takes 60 beginning, 30 middle and 30 ending candidate s
 
 Reuse verified trained weights. Extract page-addressable sentences; score all candidates with overlapping windows; aggregate repeated scores; organize four source-extract sections; run exact evidence and omission checks. Flag uncertain extraction, quotation recovery, missing sections and long target truncation. Some directives can exceed the word target to keep their conditions together.
 
-The current parser, attribution, windows, model, brief and CLI modules are copied without changes from Stage 4.5. This consolidation does not alter their predictions. The notebook training interfaces are refactored research entrypoints with the same principal architectures/settings, not a new numerical reproduction of every historical experiment. Original source exports are kept for detailed comparison. Newly trained weights require new evaluation and a provenance-compatible deployment bundle; they are not automatically promoted.
+The original consolidation copied the Stage 4.5 inference modules. The subsequent [4.6 revision](decision_upgrade.md) changes parser quotation recovery, attribution and decision assembly; windows, model weights and model scoring remain unchanged. Its measured gains are targeted development checks, not a new summary-accuracy estimate. The notebook training interfaces are refactored research entrypoints with the same principal architectures/settings, not a new numerical reproduction of every historical experiment. Original source exports are kept for detailed comparison. Newly trained weights require new evaluation and a provenance-compatible deployment bundle; they are not automatically promoted.
 
 ## 5. Evidence and limitations
 

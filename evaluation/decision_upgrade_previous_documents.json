@@ -1,4 +1,5 @@
 {
+  "version": "4.6.0",
   "scope": "Original 10 development cases, verified cached predictions; no unseen accuracy claim",
   "checks_passed": 29,
   "check_count": 29,

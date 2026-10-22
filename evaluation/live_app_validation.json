@@ -1,0 +1,27 @@
+{
+  "health": {
+    "status": "ok",
+    "version": "4.6.0",
+    "model_configured": true,
+    "public_accuracy_claim": false
+  },
+  "status": "ready",
+  "source_check": true,
+  "decision_checks_passed": true,
+  "model": {
+    "mode": "trained_full_document",
+    "selector": "L120_tfidf_budgeted_no_roles",
+    "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615",
+    "source_sentences": 9,
+    "scored_sentences": 9,
+    "sentence_coverage": 1.0,
+    "window_size": 120,
+    "overlap": 30,
+    "window_count": 1,
+    "long_sentence_ids": [],
+    "long_sentence_note": "The encoder sees at most 192 target tokens per sentence, as trained. Full sentence text remains in the evidence engine.",
+    "scores_are_calibrated": false,
+    "old_benchmark_scores_apply": false
+  },
+  "source": "invented fixture; software smoke test, not model accuracy"
+}

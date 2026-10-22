@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-22",
+  "frozen_candidate_commit": "bbcb718",
+  "baseline_commit": "10099ab",
+  "selection": "Four additional official judgments selected via source search before viewing their model outputs. Purposive exploratory sample, not random or independent. Search snippets exposed some source outcomes. Training overlap is unknown.",
+  "review_criteria": ["Current-court disposition rather than a quoted/earlier outcome", "Material relief, conditions, amounts and deadlines retained", "Exact evidence matching", "Remaining issue/reasoning omissions recorded separately"],
+  "change_policy": "Preserve first-run outputs. If these cases motivate further changes, treat them as development cases and report the rerun separately.",
+  "documents": [
+    {"file":"bank_25770_2025.pdf","url":"https://api.sci.gov.in/supremecourt/2012/25770/25770_2012_17_127_64851_Judgement_09-Oct-2025.pdf"},
+    {"file":"compensation_28339_2025.pdf","url":"https://api.sci.gov.in/supremecourt/2020/28339/28339_2020_3_1503_61757_Judgement_13-May-2025.pdf"},
+    {"file":"cuddalore_13548_2025.pdf","url":"https://www.sci.gov.in/sci-get-pdf/?diary_no=135482017&from=latest_judgements_order&order_date=2025-01-15&type=j"},
+    {"file":"aptel_134_2025.pdf","url":"https://aptel.gov.in/sites/default/files/2025-03/JUDGMENT%20IN%20APPEAL%20NO%20134%20OF%202024%20dtd%2027-03-2025.pdf"}
+  ]
+}

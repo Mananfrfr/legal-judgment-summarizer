@@ -28,4 +28,4 @@ Notebook 00 now shows these classical training steps inline, followed by the opt
 - **Datasets** are obtained from the original publishers through [data access instructions](../data/README.md). The repository includes fixed split IDs and download/checksum logic. It does not rehost the gated role corpus.
 - **Research exports** preserve historical code and paths; they are reference text, not ready-to-run replacements for the current notebooks. The main supported workflow covers the principal experiments, not every historical variation as a separate runnable notebook.
 
-The deployed inference modules and model weights remain unchanged. The new Stage 1 notebook is a readable training workflow, not a newly improved deployed model or proof that historical scores have been reproduced.
+The consolidation preserved the original inference modules and weights. The subsequent [4.6 upgrade](decision_upgrade.md) changes decision extraction and PDF quotation recovery; weights remain unchanged. The new Stage 1 notebook is a readable training workflow, not a newly improved deployed model or proof that historical scores have been reproduced.
