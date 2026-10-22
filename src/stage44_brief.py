@@ -3,14 +3,14 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 from stage44_source import read_document, verify_evidence
-from stage44_attribution import attribution_map, current_analysis, COURT, ASSESSMENT, PARTY, LEGAL_DISPUTE, assessment
+from stage44_attribution import attribution_map, current_analysis, COURT, ASSESSMENT, PARTY, LEGAL_DISPUTE, assessment, PASSIVE_REPORTED
 
-VERSION = '4.5.0'
+VERSION = '4.6.0'
 SECTION_TITLES = {'background':'Background / allegations and procedural history',
                   'issue':'Issues / dispute context', 'reasoning':'Reasoning (consecutive source passages; attribution needs review)',
                   'decision':'Decision and operative directions'}
 HISTORICAL = re.compile(r'\b(?:had\s+(?:been\s+)?(?:dismissed|allowed|directed)|(?:High|Trial|Family|District|lower|appellate)\s+Court\s+(?:had|held|found|concluded|went|observed|ordered|directed|dismissed|allowed)|(?:counsel|appellant|respondent|petitioner)\s+(?:submitted|argued|contended|urged|prayed)|it\s+was\s+(?:held|ordered|directed|submitted)|in\s+the\s+case\s+of)\b',re.I)
-SUBJECT_OUTCOME = re.compile(r'\b(?:appeals?|petitions?|applications?|suit)\b.{0,110}?\b(?:stands?\s+(?:dismissed|allowed|disposed)|(?:is|are|be)\s+(?:hereby\s+|accordingly\s+|partly\s+|partially\s+)?(?:dismissed|allowed|disposed|rejected)|succeeds?|fails?)\b',re.I)
+SUBJECT_OUTCOME = re.compile(r'\b(?:appeals?|petitions?|applications?|suit|(?:present|this|these)\s+(?:batch|group)\s+of\s+(?:matters|cases))\b.{0,110}?\b(?:stands?\s+(?:dismissed|allowed|disposed)|(?:is|are)\s+(?:hereby\s+|accordingly\s+|partly\s+|partially\s+)?(?:dismissed|allowed|disposed|rejected)|succeeds?|fails?)\b',re.I)
 DIRECT = re.compile(r'\b(?:we\s+(?:(?:hereby|accordingly|therefore|thus|further|also)\s+)*(?:direct|allow|dismiss|quash|set\s+aside|remand|restore|grant|clarify|modify|order|dispose|permit)|in\s+allowing\s+(?:the|this)\s+appeal)\b',re.I)
 ACTION = re.compile(r'\b(?:shall|is\s+directed|are\s+directed|set\s+aside|restored|quash(?:ed)?|modified|remand(?:ed)?|remit(?:ted)?|deposit(?:ed)?|payable|enhanced|release(?:d)?\s+on\s+bail|subject\s+to|exemption\b.{0,40}\bgranted|no\s+(?:order\s+as\s+to\s+)?costs|within\b.{0,50}\b(?:days?|weeks?|months?))\b',re.I)
 ISSUE = re.compile(r'\b(?:whether|questions?\s+(?:of\s+law|for\s+consideration|that\s+arises?|arising)|(?:main|sole|primary|principal|central|singular|next)\s+(?:issue|question|grievance)|issue\s+(?:before\s+us|concerning)|we\s+are\s+called\s+upon|controversy\s+(?:is|relates))\b',re.I)
@@ -19,12 +19,17 @@ PROCEDURAL=re.compile(r'\b(?:(?:present|instant|these|this)\b.{0,30}\b(?:appeals
 REASON = re.compile(r'\b(?:we\s+(?:find|hold|are\s+of|have|cannot|do\s+not|agree)|in\s+our\s+(?:view|opinion)|therefore|because|it\s+(?:follows|is\s+(?:clear|evident))|prima\s+facie|goes\s+without\s+saying|barred\s+by\s+limitation|no\s+(?:merit|substance))\b',re.I)
 FINAL_CONNECTOR = re.compile(r'\b(?:accordingly|in\s+view\s+of|for\s+(?:the\s+)?(?:above|these|foregoing)|in\s+the\s+result|consequently|hence)\b',re.I)
 ORDER_DETAIL = re.compile(r'\b(?:shall|within|subject\s+to|entitled\s+to|stands?\s+restored|set\s+aside|quash(?:ed)?|no\s+further\s+proceedings|enhanced|payable|Rs\.|rupees|compensation\s+(?:is|of)|maintenance\s+(?:is|of|at)|released\s+on\s+bail|no\s+order\s+as\s+to\s+costs|will\s+have\s+to\s+be\s+placed)\b|₹|\d\s*%',re.I)
+MERITS_QUALIFICATION = re.compile(r'\b(?:this\s+Court\s+has|we\s+have)\s+not\s+expressed\s+(?:any\s+)?(?:views?|opinion)\s+on\s+the\s+merits\b|\bwe\s+express\s+no\s+opinion\b',re.I)
 
 def elapsed_history(text):
     return bool(re.search(r'\bwithin\s+(?:a\s+period\s+of\s+)?(?:\d+|[a-z]+)\s+(?:days?|weeks?|months?)\s+(?:from|of|after)\s+(?:the\s+)?(?:signing|execution|filing|occurrence|accident)\b',text,re.I)) and not re.search(r'\b(?:shall|must|direct|directed|order|ordered)\b',text,re.I)
 
+def outcome_text(text):
+    """Ignore optional commas for cue matching only; evidence remains verbatim."""
+    return re.sub(r'\s+', ' ', text.replace(',', ' '))
+
 def outcome_score(s, total):
-    text=s['sentence']
+    text=outcome_text(s['sentence'])
     if s['quoted'] or text.rstrip().endswith('?'):
         return 0
     direct=bool(DIRECT.search(text))
@@ -34,7 +39,7 @@ def outcome_score(s, total):
     if not (direct or disposition):
         return 0
     # Requests and reports of earlier orders cannot alone anchor a present order.
-    if HISTORICAL.search(text) and not direct:
+    if (HISTORICAL.search(text) or PASSIVE_REPORTED.search(text)) and not direct:
         return 0
     if re.search(r'\b(?:prays?|prayed|seeks?|seeking|request(?:ed)?)\b.{0,45}\b(?:be\s+allowed|be\s+dismissed)',text,re.I):
         return 0
@@ -76,9 +81,10 @@ def build_brief(doc, budget=800, predictions=None, model_info=None):
         left,right=min(cluster),max(cluster)
         for p in doc.paragraphs:
             if left-2 <= p['id'] <= right+8 and not p['quoted']:
-                if (ACTION.search(p['text']) or SUBJECT_OUTCOME.search(p['text'])) and not elapsed_history(p['text']) and not p['text'].rstrip().endswith('?'):
+                qualification=MERITS_QUALIFICATION.search(p['text']) and all(attributes[s['id']]['label'] not in excluded_roles for s in sentences if s['paragraph_id']==p['id'])
+                if (ACTION.search(p['text']) or SUBJECT_OUTCOME.search(outcome_text(p['text'])) or qualification) and not elapsed_history(p['text']) and not p['text'].rstrip().endswith('?'):
                     # Do not extend past a postscript into historical narration.
-                    if not HISTORICAL.search(p['text']) or DIRECT.search(p['text']):
+                    if not (HISTORICAL.search(p['text']) or PASSIVE_REPORTED.search(p['text'])) or DIRECT.search(outcome_text(p['text'])):
                         cluster.add(p['id'])
         for s in eligible:
             if s['paragraph_id'] in cluster:
@@ -89,9 +95,9 @@ def build_brief(doc, budget=800, predictions=None, model_info=None):
         # cut an amount, qualification, deadline or preceding operative clause.
         for pid in cluster:
             members=[s for s in sections['decision'] if s['paragraph_id']==pid]
-            first_order=next((i for i,s in enumerate(members) if DIRECT.search(s['sentence']) or SUBJECT_OUTCOME.search(s['sentence']) or re.search(r'will\s+have\s+to\s+be\s+placed',s['sentence'],re.I)),0)
+            first_order=next((i for i,s in enumerate(members) if DIRECT.search(outcome_text(s['sentence'])) or SUBJECT_OUTCOME.search(outcome_text(s['sentence'])) or re.search(r'will\s+have\s+to\s+be\s+placed',s['sentence'],re.I)),0)
             prefix=members[:first_order]
-            if prefix and all(current_analysis(s,attributes) and not ORDER_DETAIL.search(s['sentence']) for s in prefix):
+            if prefix and all(current_analysis(s,attributes) and not ORDER_DETAIL.search(s['sentence']) and not MERITS_QUALIFICATION.search(s['sentence']) for s in prefix):
                 move={s['id'] for s in prefix}
                 sections['decision']=[s for s in sections['decision'] if s['id'] not in move]
                 decision_ids-=move

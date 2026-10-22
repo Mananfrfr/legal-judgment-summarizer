@@ -205,7 +205,7 @@ four=[md('''# 04 · Final pipeline and explainable demonstration
 **Question:** How does a new judgment become a reviewable brief?
 
 **PDF/TXT → source sentences → trained scores and roles → evidence-grounded sections → audit → human review.**
-The implementation and existing checkpoint checks are unchanged from Stage 4.5. This notebook makes the flow easier to explain; it does not claim a new model-quality improvement.
+The existing trained weights and checkpoint checks are preserved. Version 4.6 improves decision attribution, retains qualifications and recovers some unclosed PDF quotations with a review warning. See `docs/decision_upgrade.md` for development results and remaining errors; no new unseen-document accuracy is claimed.
 '''),*setup,
 md('''## 1. Choose the demonstration mode
 The invented TXT example runs without downloads. For a real trained-model demo, run `scripts/download_models.py` once, set `USE_TRAINED_MODEL=True`, and provide a judgment path. The supplied model remains your actual fine-tuned encoder and trained heads; we do not substitute a base BERT model.

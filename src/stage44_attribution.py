@@ -18,6 +18,9 @@ ASSESSMENT_EXTRA = re.compile(r'\b(?:claim\s+stands?\s+barred|(?:reasoning|findi
 CITATION_INTRO = re.compile(r'\b(?:we\s+(?:would\s+like\s+to\s+)?(?:reproduce|quote|extract)|it\s+would\s+be\s+beneficial\s+to\s+reproduce)\b',re.I)
 CURRENT_THIRD_PERSON=re.compile(r'\bthis\s+Court\s+(?:is\s+of\s+the\s+(?:considered\s+)?view|holds|reiterates|concludes|finds)\b',re.I)
 
+# Passive reports may have no "High Court dismissed" subject/verb ordering.
+PASSIVE_REPORTED = re.compile(r'\b(?:dismissed|allowed|rejected|disposed\s+of)\b.{0,70}?\bby\s+(?:(?:a|the)\s+)?(?:(?:Division|Single(?:[- ]Judge)?)\s+Bench\s+of\s+)?(?:the\s+)?(?:High|Trial|Family|District|lower|appellate)\s+Court\b', re.I)
+
 def prior_authority(text):
     return bool(re.match(r'^In\s+(?!our\b|the\s+present\b|this\b|view\b|light\b|these\b|such\b)',text,re.I)
                 and re.search(r'\b(?:v\.|vs\.|supra|SCC)',text[:180],re.I)
@@ -71,7 +74,7 @@ def attribution_map(doc):
             elif assessment(t):
                 label, cue = 'current_court', 'present court assessment cue'
                 court_context = True
-            elif REPORTED.search(t):
+            elif REPORTED.search(t) or PASSIVE_REPORTED.search(t):
                 label, cue = 'reported_material', 'earlier ruling, allegation or external finding'
             elif court_context:
                 label, cue = 'court_context', 'consecutive context within a court-assessment paragraph'

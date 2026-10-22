@@ -1,4 +1,4 @@
-"""Notebook-friendly entrypoints around the unchanged inference pipeline."""
+"""Notebook-friendly entrypoints around the evidence-grounded inference pipeline."""
 from pathlib import Path
 import json,os
 

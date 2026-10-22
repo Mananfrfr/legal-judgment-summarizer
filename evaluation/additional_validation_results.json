@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-22",
+  "version": "4.6.0",
+  "scope": "Specified operative-decision text coverage only; not accuracy or complete legal review",
+  "selection": "Four additional official judgments selected via source search before viewing their model outputs. Purposive exploratory sample, not random or independent. Search snippets exposed some source outcomes. Training overlap is unknown.",
+  "reviewer": "Assistant source-page inspection, not independent human annotation",
+  "targets_timing": "Targets written after inspecting source final pages and before reading model outputs",
+  "status": "Development cases: first-run failures motivated the revised pipeline; no untouched rerun claim",
+  "weights_retrained": false,
+  "actual_model_scoring": true,
+  "total_sentences_scored": 1679,
+  "comparisons_reuse_identical_predictions": true,
+  "documents_passing_specified_checks": {
+    "baseline": 2,
+    "candidate_initial": 2,
+    "revised_final": 4
+  },
+  "document_count": 4,
+  "frozen_candidate_commit": "bbcb718",
+  "baseline_commit": "10099ab",
+  "frozen_module_hashes": {
+    "stage44_app.py": "edb6c7151ce760d8cf59d8d53b14c7d515f79c1dec1fd40f20d77670ab34a861",
+    "stage44_attribution.py": "b8cf9aa448858e39c53fb21bafdc48b2635ee13337ba14e568deac402b9410ad",
+    "stage44_brief.py": "dee27a809c1cc944da3a902b958714f86eb9898973b27f65cffb4193a1a9d60e",
+    "stage44_cli.py": "ee22ba688a668788c41daf21bbb2d0b7f650c33fe98bdf6f3e557c2c5f1e7f44",
+    "stage44_model.py": "6f2c57d7e88c47113201a852b7f30df2111ccf7cdb3c9059998001c31dc75d15",
+    "stage44_source.py": "6d404cb6816d9d64d44632bc6e7c62999da9bc0a68561051bb2fc202659efc2f",
+    "stage44_windows.py": "e6333308e2abf998d663c9a9ac83232b7c3c64401dd79a87223e6a704e810d62"
+  },
+  "revised_module_hashes": {
+    "stage44_app.py": "edb6c7151ce760d8cf59d8d53b14c7d515f79c1dec1fd40f20d77670ab34a861",
+    "stage44_attribution.py": "b8cf9aa448858e39c53fb21bafdc48b2635ee13337ba14e568deac402b9410ad",
+    "stage44_brief.py": "5fc906bbe53bb1c178e28ab13cbe8604676996748112ae5c2c60b1eccbac3c1d",
+    "stage44_cli.py": "ee22ba688a668788c41daf21bbb2d0b7f650c33fe98bdf6f3e557c2c5f1e7f44",
+    "stage44_model.py": "6f2c57d7e88c47113201a852b7f30df2111ccf7cdb3c9059998001c31dc75d15",
+    "stage44_source.py": "4955f5f65eb9bf5a3a04658b43539562832e4abb3cf331b606936d4882dc7b4e",
+    "stage44_windows.py": "e6333308e2abf998d663c9a9ac83232b7c3c64401dd79a87223e6a704e810d62"
+  },
+  "remaining_failures": [
+    "APTEL issue section selects a question from a cited case; current controlling issue coverage remains unreliable.",
+    "The earlier Section 19 reasoning omission is not fixed by this decision-only revision.",
+    "No independent human full-summary evaluation or calibrated confidence; long sentences are truncated for model ranking."
+  ],
+  "documents": [
+    {
+      "file": "bank_25770_2025.pdf",
+      "source_url": "https://api.sci.gov.in/supremecourt/2012/25770/25770_2012_17_127_64851_Judgement_09-Oct-2025.pdf",
+      "source_target_pages": [
+        19
+      ],
+      "runs": {
+        "baseline": {
+          "required_text_checks": {
+            "appeal is dismissed": true,
+            "stands affirmed": true,
+            "respective costs": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        },
+        "candidate_initial": {
+          "required_text_checks": {
+            "appeal is dismissed": true,
+            "stands affirmed": true,
+            "respective costs": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        },
+        "revised_final": {
+          "required_text_checks": {
+            "appeal is dismissed": true,
+            "stands affirmed": true,
+            "respective costs": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        }
+      },
+      "source_sha256": "2ed45e4ce2d519e4f8972b34d5691463da92af63c011d336f3db2cc124e4e6eb",
+      "sentence_count": 208,
+      "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615"
+    },
+    {
+      "file": "compensation_28339_2025.pdf",
+      "source_url": "https://api.sci.gov.in/supremecourt/2020/28339/28339_2020_3_1503_61757_Judgement_13-May-2025.pdf",
+      "source_target_pages": [
+        19,
+        20
+      ],
+      "runs": {
+        "baseline": {
+          "required_text_checks": {
+            "67,36,084": true,
+            "7%": true,
+            "six weeks": true,
+            "date of the filing": true,
+            "jointly and severally": true,
+            "recover its share": true,
+            "appeals are accordingly allowed": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19,
+            20
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        },
+        "candidate_initial": {
+          "required_text_checks": {
+            "67,36,084": true,
+            "7%": true,
+            "six weeks": true,
+            "date of the filing": true,
+            "jointly and severally": true,
+            "recover its share": true,
+            "appeals are accordingly allowed": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19,
+            20
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        },
+        "revised_final": {
+          "required_text_checks": {
+            "67,36,084": true,
+            "7%": true,
+            "six weeks": true,
+            "date of the filing": true,
+            "jointly and severally": true,
+            "recover its share": true,
+            "appeals are accordingly allowed": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            19,
+            20
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        }
+      },
+      "source_sha256": "7ebd1766cf784ae21cec7bb4523b245e91c1f7bc816e50ce1504a5887403396d",
+      "sentence_count": 120,
+      "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615"
+    },
+    {
+      "file": "cuddalore_13548_2025.pdf",
+      "source_url": "https://www.sci.gov.in/sci-get-pdf/?diary_no=135482017&from=latest_judgements_order&order_date=2025-01-15&type=j",
+      "source_target_pages": [
+        78
+      ],
+      "runs": {
+        "baseline": {
+          "required_text_checks": {
+            "appeals fail": true,
+            "not expressed any views on the merits": false
+          },
+          "all_required_text_present": false,
+          "decision_pages": [
+            78
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        },
+        "candidate_initial": {
+          "required_text_checks": {
+            "appeals fail": true,
+            "not expressed any views on the merits": false
+          },
+          "all_required_text_present": false,
+          "decision_pages": [
+            78
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        },
+        "revised_final": {
+          "required_text_checks": {
+            "appeals fail": true,
+            "not expressed any views on the merits": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            78
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW"
+          ]
+        }
+      },
+      "source_sha256": "4a818326d47bcf3d33ab3016f44e7c6de72004bc4898f41c32dc2a516d7cc7c0",
+      "sentence_count": 650,
+      "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615"
+    },
+    {
+      "file": "aptel_134_2025.pdf",
+      "source_url": "https://aptel.gov.in/sites/default/files/2025-03/JUDGMENT%20IN%20APPEAL%20NO%20134%20OF%202024%20dtd%2027-03-2025.pdf",
+      "source_target_pages": [
+        111
+      ],
+      "runs": {
+        "baseline": {
+          "required_text_checks": {
+            "Appeal is allowed": false,
+            "set aside": false,
+            "shall not disable": false,
+            "other remedies": false
+          },
+          "all_required_text_present": false,
+          "decision_pages": [
+            8,
+            10,
+            11,
+            12,
+            13,
+            15
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "BUDGET_OVERFLOW",
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        },
+        "candidate_initial": {
+          "required_text_checks": {
+            "Appeal is allowed": false,
+            "set aside": false,
+            "shall not disable": false,
+            "other remedies": false
+          },
+          "all_required_text_present": false,
+          "decision_pages": [
+            8,
+            10,
+            11,
+            12,
+            13,
+            15
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "BUDGET_OVERFLOW",
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        },
+        "revised_final": {
+          "required_text_checks": {
+            "Appeal is allowed": true,
+            "set aside": true,
+            "shall not disable": true,
+            "other remedies": true
+          },
+          "all_required_text_present": true,
+          "decision_pages": [
+            111
+          ],
+          "exact_source_check": true,
+          "flags": [
+            "POSSIBLE_OMITTED_DIRECTIONS",
+            "QUOTE_ATTRIBUTION_REVIEW",
+            "ENCODER_TRUNCATION_REVIEW"
+          ]
+        }
+      },
+      "source_sha256": "baa79e18c55197cecf31d30e3a4b76564c81935535a83c0f8448fafcbecea2de",
+      "sentence_count": 701,
+      "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615"
+    }
+  ]
+}

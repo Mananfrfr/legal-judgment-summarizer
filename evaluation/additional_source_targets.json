@@ -1,0 +1,11 @@
+{
+  "reviewer": "Assistant source-page inspection, not independent human annotation",
+  "timing": "Targets written after inspecting source final pages and before reading model outputs",
+  "scope": "Targeted operative-decision coverage only; not full summary quality",
+  "targets": {
+    "bank_25770_2025.pdf": {"pages":[19],"required":["appeal is dismissed","stands affirmed","respective costs"]},
+    "compensation_28339_2025.pdf": {"pages":[19,20],"required":["67,36,084","7%","six weeks","date of the filing","jointly and severally","recover its share","appeals are accordingly allowed"]},
+    "cuddalore_13548_2025.pdf": {"pages":[78],"required":["appeals fail","not expressed any views on the merits"]},
+    "aptel_134_2025.pdf": {"pages":[111],"required":["Appeal is allowed","set aside","shall not disable","other remedies"]}
+  }
+}

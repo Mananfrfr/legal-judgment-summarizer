@@ -14,6 +14,8 @@ import fitz
 def norm(text):
     return re.sub(r'\s+', ' ', text).strip()
 
+ROMAN_SECTIONS={value:i for i,value in enumerate(('I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'),1)}
+
 @dataclass
 class Document:
     source_file: str
@@ -179,6 +181,10 @@ def assemble(name, digest, page_lines, diagnostics, warnings):
     current, signed, appendix, quote_depth = None, False, False, 0
     quote_stack = []
     quote_origin_x=None
+    quote_origin_inline=False
+    outline_headings={}
+    recovered_heading_pending=False
+    native_geometry=bool(diagnostics) and all(d.get('method')=='native' for d in diagnostics)
     recovered_boundary=False
     source_section=''
     first_lines = page_lines[0][0] if page_lines else []
@@ -240,6 +246,22 @@ def assemble(name, digest, page_lines, diagnostics, warnings):
                 continue
             if re.fullmatch(r'[A-Z .\-]+,?\s+J\.?', text) and not paragraphs and current is None:
                 continue
+            # An unclosed inline quotation must not swallow a structurally
+            # established final section. Require an existing Roman outline,
+            # matching font/margin and forward numbering; block quotes stay quoted.
+            outline=re.match(r'^([IVX]+)\.\s+([A-Z].*)$',text) if text.isupper() else None
+            if outline and outline.group(1) in ROMAN_SECTIONS:
+                number=ROMAN_SECTIONS[outline.group(1)]
+                layout=(round(line['x']/3),round(line['size']))
+                known=outline_headings.get(layout,set())
+                final_heading=bool(re.fullmatch(r'(?:CONCLUSION|CONCLUSIONS|FINAL ORDER|DISPOSITION)\s*:?',outline.group(2)))
+                if (native_geometry and quote_stack and quote_origin_inline and final_heading and {1,2}.issubset(known)
+                        and len(known)>=3 and number>max(known)):
+                    flush();quote_stack.clear();quote_origin_x=None;quote_origin_inline=False
+                    recovered_heading_pending=True
+                    warnings.append(f'Page {pi}: unclosed inline quotation recovered at a matching numbered final-section heading; verify attribution.')
+                if not quote_stack:
+                    outline_headings.setdefault(layout,set()).add(number)
             if re.match(r'^(?:FACTS|ANALYSIS|REASONS|REASONING|CONCLUSION|POST-SCRIPT|ISSUES|SUBMISSIONS)\s*:?$', text, re.I):
                 flush();source_section=text; continue
             if text.isupper() and 2<=len(text.split())<=14 and re.search(r'[A-Z]{3}',text) and not re.search(r'[.!?;]$',text) and not NUMBER.match(text):
@@ -253,7 +275,7 @@ def assemble(name, digest, page_lines, diagnostics, warnings):
             # merely because a passage sounds like an order.
             recovered_boundary=False
             if quote_stack and num and not closing and quote_origin_x is not None and line['x']+12<quote_origin_x and line['x']<=body_left+8:
-                flush();quote_stack.clear();quote_origin_x=None
+                flush();quote_stack.clear();quote_origin_x=None;quote_origin_inline=False
                 recovered_boundary=True
                 warnings.append(f'Page {pi}, paragraph {num.group(1)}: quotation boundary recovered from PDF indentation; verify attribution.')
             previous_text = current['fragments'][-1]['text'] if current and current['fragments'] else ''
@@ -268,8 +290,9 @@ def assemble(name, digest, page_lines, diagnostics, warnings):
                 flush()
             if current is None:
                 current = dict(fragments=[], number=num.group(1) if num else None,
-                               quoted=bool(quote_stack) or opens_block, quote_uncertain=recovered_boundary,
+                               quoted=bool(quote_stack) or opens_block, quote_uncertain=recovered_boundary or recovered_heading_pending,
                                source_section=source_section)
+                recovered_heading_pending=False
             if num:
                 start += num.end()
                 text = text[num.end():]
@@ -299,8 +322,10 @@ def assemble(name, digest, page_lines, diagnostics, warnings):
             raw = line['text']
             was_quoted=bool(quote_stack)
             advance_quotes(raw,quote_stack)
-            if not was_quoted and quote_stack:quote_origin_x=line['x']
-            elif not quote_stack:quote_origin_x=None
+            if not was_quoted and quote_stack:
+                quote_origin_x=line['x'];quote_origin_inline=not opens_block
+            elif not quote_stack:
+                quote_origin_x=None;quote_origin_inline=False
             if current and current['quoted'] and not quote_stack:
                 flush()
     flush()

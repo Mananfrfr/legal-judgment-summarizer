@@ -1,0 +1,22 @@
+{
+  "scope": "Targeted checks addressing supplied review; all cases are development data.",
+  "passed": 15,
+  "total": 15,
+  "checks": {
+    "MMTC excludes company currency-depreciation letter from reasoning": true,
+    "MMTC excludes quoted Majority Award account from reasoning": true,
+    "MMTC includes business judgment analysis": true,
+    "MMTC includes limited execution jurisdiction": true,
+    "MMTC no isolated roman list marker": true,
+    "MMTC reasoning exceeds previous five-sentence ceiling": true,
+    "Tamil Nadu issue describes disputed seniority": true,
+    "Alan issue contains reported limitation objection": true,
+    "Alan issue does not contain later court conclusion": true,
+    "Wakia retains larger Bench referral": true,
+    "Wakia analytical prefix moved out of decision": true,
+    "Wakia analytical prefix retained in reasoning": true,
+    "Aaditya legal-code abbreviation intact": true,
+    "Aaditya quashing and prohibition retained": true,
+    "Popular historical elapsed time not a current-order omission": true
+  }
+}

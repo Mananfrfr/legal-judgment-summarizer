@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse,Response,JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel,Field
 from review_service import ReviewStore,MAX_FILE_BYTES,MAX_BATCH_BYTES,MAX_FILES
+from stage44_brief import VERSION
 
 ROOT=Path(__file__).resolve().parent
 
@@ -81,7 +82,7 @@ def create_app(data_root=None,processor=None,password=None):
     def index():return (ROOT/'review_app.html').read_text(encoding='utf8')
 
     @app.get('/api/health')
-    def health():return dict(status='ok',version='4.5.0',model_configured=bool(os.environ.get('LEGAL_ENCODER_DIR') and os.environ.get('LEGAL_MODEL_BUNDLE')),public_accuracy_claim=False)
+    def health():return dict(status='ok',version=VERSION,model_configured=bool(os.environ.get('LEGAL_ENCODER_DIR') and os.environ.get('LEGAL_MODEL_BUNDLE')),public_accuracy_claim=False)
 
     @app.post('/api/jobs',status_code=202)
     async def upload(request:Request,files:list[UploadFile]=File(...),budget:int=Form(800),ocr:str=Form('auto'),evidence_only:bool=Form(False)):

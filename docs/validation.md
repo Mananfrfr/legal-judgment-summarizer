@@ -1,5 +1,11 @@
 # Consolidation validation — 21 October 2026
 
+**22 October 4.6 update:** 86 automated tests pass. The upgrade changes parser quotation recovery, attribution and decision assembly; app health reports the actual pipeline version. The three inspected cases pass their specified decision checks; the earlier ten retain 29/29 content and 15/15 review checks. Four additional judgments were scored with the trained model (1,679 sentences, 228 pages); specified decision coverage was 2/4 on the frozen first run and 4/4 after tuning. These four are now development cases. Weights are unchanged. [Full results and limitations](decision_upgrade.md).
+
+A live localhost HTTP smoke check also passed: version 4.6.0 loaded the verified trained encoder/selector, scored all nine sentences of an invented judgment, retained relief/conditions, and passed exact-source checks. This is an integration check, not an accuracy measurement. [Recorded app check](../evaluation/live_app_validation.json).
+
+The rest of this page records the **original 21 October consolidation**, not the revised 4.6 implementation.
+
 ## Verified
 
 - 71 automated tests pass: the original 62 pipeline/app checks plus nine teaching-workflow checks. The additions cover document-split leakage, baseline fitting, no-overwrite protection, same-document context packing, padding masks, CRF versus brute-force calculation, budgeted weak labels, real one-epoch fixture training for softmax/CRF heads and all four selector conditions.
