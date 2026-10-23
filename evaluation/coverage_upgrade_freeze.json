@@ -1,0 +1,35 @@
+{
+  "hashes": {
+    "annotations.py": "9d4eefa9169f7cbdc85bb0d42e664b8dde2f8c7ce621627db99b66b6bc29da75",
+    "crf.py": "2e6dec5851175e194883543f57be1806210c64011abbb89f61bfe75b027d1bee",
+    "dataset_index.py": "43b0f834555fb6d969c9d448938ba73698d7766008518014ec9e32cab69fc8f0",
+    "data_utils.py": "3ecce622bf901d6df2f0f6db7526bdcb777027d00a75bd57eeba32e3e40e1f2e",
+    "fast_rouge.py": "cc31dbbe8136388004b87ef410b9e4d866e8a6e588f59189fb075bc18608b929",
+    "notebook_runtime.py": "c599aa95a1ded1ce070427badde30fe67a83241ade45716e2f0412fb21068572",
+    "project_api.py": "b3700e90317fe6cd623238300cbcd3f97f84f850e24a1ec01a0fbf37b52a26a4",
+    "review_server.py": "33f22ad8457cac731a378467df021d97be326f2efe25696b783a1df2ff32d312",
+    "review_service.py": "957c5cd5ac10d86bbea1804ae4550735922d34536fffc1e05de3c58da0ccb5fc",
+    "selection_training.py": "0a1b97f9ec5b290bef79379e4cea50beb85b052e3907139da6101af9bbad1705",
+    "stage44_app.py": "edb6c7151ce760d8cf59d8d53b14c7d515f79c1dec1fd40f20d77670ab34a861",
+    "stage44_attribution.py": "b8cf9aa448858e39c53fb21bafdc48b2635ee13337ba14e568deac402b9410ad",
+    "stage44_brief.py": "9b7453c9ef6306b796f8a84cb00d65d85b8234680c7181eb39d143e4b814779f",
+    "stage44_cli.py": "ee22ba688a668788c41daf21bbb2d0b7f650c33fe98bdf6f3e557c2c5f1e7f44",
+    "stage44_model.py": "6f2c57d7e88c47113201a852b7f30df2111ccf7cdb3c9059998001c31dc75d15",
+    "stage44_source.py": "30e951aad75d1665bd274d684009491c0a9f96f0b5ac6c3cca57f00ec3d73e96",
+    "stage44_windows.py": "e6333308e2abf998d663c9a9ac83232b7c3c64401dd79a87223e6a704e810d62",
+    "summary_evaluation.py": "a95517f70be2f3c8409a4c4393946bd50843713391448301c258ed4cb15c6d74",
+    "train_models.py": "b8fcc610a90e4384e8efb03ec957e25d887d6a0207dfe7154da1f9c396f9f617",
+    "train_selector.py": "17798d886e5bfdb52ffdb2c35b79fbbc1d66a1d74152321e3122d0ae40ec440a"
+  },
+  "evaluator_sha256": "736de07e43f4da7a5dd633897e6ed93e403fd2ab6d411499fb3878f85090a248",
+  "protocol_sha256": "85c6b664ed4c8ed8eb0dca4c8abb7a33fb6e834e063278d1118d8a3a9c0df861",
+  "bundle_sha256": "e6cf75283ea068979d348d1e885e3ab57fb97b6c6965132d172a90eb07f5c559",
+  "encoder_sha256": {
+    "config.json": "ae9c1121989e71b2b90c79fa914c35dee4c90661fb953fe01b7ff9714016ea33",
+    "tokenizer.json": "748b33bb35e7b2b1deb1fba79cf9dbf616fe0f8329ab7c7a880e123d8a0f1f13",
+    "model.safetensors": "4b2bdba98605d5f52d28ea7f18d10ddef5cd3ab94d1ab3555a2acd528685ce11"
+  },
+  "primary": "candidate_800 versus baseline_800 ROUGE-L; lead comparator; empty decisions and source checks",
+  "metric": "rouge-score tokenization/Porter stemming; exact bit-parallel sequence LCS; 100 randomized equivalence checks",
+  "weights_retrained": false
+}

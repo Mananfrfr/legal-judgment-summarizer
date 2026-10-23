@@ -28,6 +28,8 @@ The original consolidation copied the Stage 4.5 inference modules. The subsequen
 
 ## 5. Evidence and limitations
 
+Version 4.7 adds directional straight-quote handling, terminal disposition recognition, protection against oversized decision paragraphs and budget redistribution using the existing learned selector. It was developed on the existing 40 cases, then frozen for a separate 100-case sample excluding known selector train/dev exposure. See [the coverage-upgrade methodology and limits](coverage_upgrade.md). The model weights remain unchanged.
+
 Role metrics are on DEV. Stage 3.6 ROUGE is on its original official TEST protocol. Neither is an accuracy score for today's full-document app. A separate three-judgment source comparison found two critical decision-section failures; all selected spans could still match source text exactly. No independent human legal-accuracy benchmark has been completed, and training overlap for those three judgments is unknown.
 
 Future work: label current-court and reported/quoted spans, evaluate attribution before selection, calibrate abstention, validate scanned/native formats and conditional orders, then test on a newly reserved set with independent reviewers. Changing rules to fix inspected examples requires a new untouched evaluation set.

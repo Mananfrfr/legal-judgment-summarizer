@@ -1,0 +1,109 @@
+{
+  "candidate": "4.7.0",
+  "evaluation_kind": "inspected development regression; NOT independent or unseen evaluation",
+  "weights_retrained": false,
+  "predictions_reused_after_hash_validation": true,
+  "legal_accuracy_measured": false,
+  "checks_cover": "Selected final-decision wording and specified conditions only; not complete judgment quality",
+  "remaining_work": "Independent attribution/completeness review and a new untouched evaluation set; Section 19 reasoning omission remains outside this fix",
+  "documents": [
+    {
+      "source_file": "129_2025_4_1501_74249_Judgement_15-Sep-2026.pdf",
+      "source_sha256": "3f49a31464fec174cdbff5d9e194fa888ca00529b6246eacdc8ac2368eab4653",
+      "cached_predictions_verified": true,
+      "baseline_targeted_checks": {
+        "required": {
+          "They are accordingly dismissed": false,
+          "Tribunal must scrutinize": false,
+          "fifteen years": false,
+          "no order as to costs": false
+        },
+        "excluded": {}
+      },
+      "candidate_targeted_checks": {
+        "required": {
+          "They are accordingly dismissed": true,
+          "Tribunal must scrutinize": true,
+          "fifteen years": true,
+          "no order as to costs": true
+        },
+        "excluded": {}
+      },
+      "baseline_all_targeted_checks_pass": false,
+      "candidate_all_targeted_checks_pass": true,
+      "exact_source_check": true,
+      "decision_source_pages": [
+        92,
+        93
+      ],
+      "flags": []
+    },
+    {
+      "source_file": "37437_2026_6_1501_74756_Judgement_29-Sep-2026.pdf",
+      "source_sha256": "5741a40a9d0a1bc6e980fc0c9910282985942a2ccdf5a45a41279965dc3466df",
+      "cached_predictions_verified": true,
+      "baseline_targeted_checks": {
+        "required": {
+          "are, accordingly, set aside": false,
+          "Appellant shall be released forthwith, unless": false,
+          "appeal is, accordingly, allowed": false,
+          "within a month": false
+        },
+        "excluded": {
+          "writ petition, however, came to be dismissed": false
+        }
+      },
+      "candidate_targeted_checks": {
+        "required": {
+          "are, accordingly, set aside": true,
+          "Appellant shall be released forthwith, unless": true,
+          "appeal is, accordingly, allowed": true,
+          "within a month": true
+        },
+        "excluded": {
+          "writ petition, however, came to be dismissed": true
+        }
+      },
+      "baseline_all_targeted_checks_pass": false,
+      "candidate_all_targeted_checks_pass": true,
+      "exact_source_check": true,
+      "decision_source_pages": [
+        40,
+        41
+      ],
+      "flags": [
+        "POSSIBLE_OMITTED_DIRECTIONS"
+      ]
+    },
+    {
+      "source_file": "38471_2025_14_1502_75449_Judgement_16-Oct-2026.pdf",
+      "source_sha256": "4e871a8ec1a362944ad03f60b4f447c3778cd59fa2526fe48f4227d76c4a9d47",
+      "cached_predictions_verified": true,
+      "baseline_targeted_checks": {
+        "required": {
+          "appeal stands dismissed": true,
+          "interlocutory application": true
+        },
+        "excluded": {}
+      },
+      "candidate_targeted_checks": {
+        "required": {
+          "appeal stands dismissed": true,
+          "interlocutory application": true
+        },
+        "excluded": {}
+      },
+      "baseline_all_targeted_checks_pass": true,
+      "candidate_all_targeted_checks_pass": true,
+      "exact_source_check": true,
+      "decision_source_pages": [
+        17
+      ],
+      "flags": [
+        "POSSIBLE_OMITTED_DIRECTIONS",
+        "ISSUE_CONTEXT_ONLY",
+        "ENCODER_TRUNCATION_REVIEW"
+      ]
+    }
+  ]
+}

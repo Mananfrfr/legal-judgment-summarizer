@@ -64,10 +64,23 @@ If your faculty wants to inspect the initial ML pipeline, open [Notebook 00](../
 2. Can we obtain independent legal review or annotated current-decision spans?
 3. What evaluation size and baseline comparisons are expected for the mini project?
 
-## Current automatic summarization result
+## Earlier automatic summarization result
 
-The current 4.6.0 pipeline at its default 800-word target achieved **20.94 ROUGE-L F1 points**, with a 95% case-bootstrap interval of **19.41–22.58**, on all **100 official IN-Abs test judgments**.
+The earlier 4.6.0 pipeline at its default 800-word target achieved **20.94 ROUGE-L F1 points**, with a 95% case-bootstrap interval of **19.41–22.58**, on all **100 official IN-Abs test judgments**.
 
 The current structured pipeline scores below the opening-sentence baseline on ROUGE-L. These results do not establish a reference-overlap improvement from the pipeline. The decision fixes addressed specific attribution errors; they did not establish better overall summarization.
 
 Report this as ROUGE-L F1, not legal accuracy. [Full results and presentation wording](current_summary_benchmark.md).
+
+
+## What improved in version 4.7
+
+| Method (800-word target) | ROUGE-1 | ROUGE-2 | ROUGE-L | Empty decisions |
+|---|---:|---:|---:|---:|
+| Previous 4.6 pipeline | 41.00 | 19.98 | 21.98 | 45 |
+| Opening-sentence baseline | 50.47 | 25.01 | 24.81 | N/A |
+| Upgraded 4.7 pipeline | 56.67 | 33.62 | 30.23 | 13 |
+
+These rows use the same 100 reserved cases, separate from the old official test benchmark. Explain: “The model already ranked useful evidence, but post-processing discarded too much. We corrected quote parsing, recognized more decision endings, and filled unused space with ranked, nonrepeated source sentences. We tested the changes on development data and then measured the reserved sample.”
+
+Say **ROUGE-L reference overlap**, not summary accuracy. The unchanged weights and better pipeline together produced the measured change. The remaining 13 empty decisions, uncertain attribution, soft budget overflows, pre-review freeze amendment and same-corpus limitations are disclosed in [the full report](coverage_upgrade.md).

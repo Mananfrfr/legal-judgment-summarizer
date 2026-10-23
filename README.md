@@ -1,10 +1,10 @@
 # Legal Judgment Summarizer
 
-**Version 4.6.0 — review-assisted research app.** Improved final-decision attribution, qualification retention and recovery from an unclosed inline quotation in a structured PDF. **91 automated tests pass**, including evaluation checks. Trained weights are unchanged; no new unseen-document accuracy is claimed. [Changes, measured results and remaining errors](docs/decision_upgrade.md).
+**Version 4.7.0 — review-assisted research app.** Better quotation handling, decision recognition and use of the summary budget, with a reserved-case comparison. **104 automated tests pass.** Trained weights are unchanged. [Changes, results and limitations](docs/coverage_upgrade.md).
 
 An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
 
-The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model is preserved; the inference pipeline includes the documented 4.6 decision-extraction fixes.
+The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model is preserved; the inference pipeline includes the documented 4.7 coverage improvements.
 
 **Want to see the early ML code in full?** Open [00_classical_ml_and_word_bilstm](notebooks/00_classical_ml_and_word_bilstm.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/00_classical_ml_and_word_bilstm.ipynb)). This optional fifth notebook shows TF-IDF, majority baseline, KNN, logistic regression, SVM, error analysis, saved-model prediction and word-level BiLSTM training step by step. [Why the other notebooks are short and where the full code lives](docs/code_map.md).
 
@@ -25,15 +25,21 @@ Each notebook has one setup cell. `%%project` runs ordinary Python in a persiste
 
 ## Current summarization measurement
 
-The current 4.6.0 pipeline was run on **all 100 official IN-Abs test judgments** at the app's default 800-word target:
+The upgraded **4.7 pipeline** was evaluated against the previous pipeline and a simple lead baseline on the **same 100 reserved IN-Abs judgments**, after development on 40 separate cases. This sample is from unused training-pool pairs, with known selector train/dev IDs and exact source duplicates excluded.
 
-| ROUGE-1 F1 | ROUGE-2 F1 | ROUGE-L F1 (95% interval) |
-|---:|---:|---:|
-| 37.42 | 18.25 | 20.94 (19.41–22.58) |
+| Method (800-word target) | ROUGE-1 | ROUGE-2 | ROUGE-L | Empty decisions |
+|---|---:|---:|---:|---:|
+| Previous 4.6 pipeline | 41.00 | 19.98 | 21.98 | 45 |
+| Opening-sentence baseline | 50.47 | 25.01 | 24.81 | N/A |
+| Upgraded 4.7 pipeline | 56.67 | 33.62 | 30.23 | 13 |
 
-Scores are on a 0–100 scale; they are **not summary-correctness percentages**. The current structured pipeline scores below the opening-sentence baseline on ROUGE-L. These results do not establish a reference-overlap improvement from the pipeline. The decision fixes addressed specific attribution errors; they did not establish better overall summarization. The test set was previously used in Stage 3.6, so this is a reused benchmark. [Full baseline comparison, confidence intervals and limitations](docs/current_summary_benchmark.md).
+Upgraded ROUGE-L: **30.23** (95% case-bootstrap interval **28.57–31.96**). Paired gain over 4.6: **8.25 points** (95% interval **6.40–10.09**). Paired gain over lead: **5.42 points** (95% interval **3.98–6.95**).
 
-The default briefs averaged 308 words despite an 800-word target, and 47/100 had an empty decision section. These coverage limitations remain even though exact-source checks pass.
+These are **reference-overlap scores, not percentages of legally correct summaries**. The weights were not retrained. Outputs averaged **782.6 words**, versus **306.4** before; 0/100 exceeded the soft 800-word target. All 100 upgraded summaries passed source-span checks. Empty decisions improved from 45 to 13, but recovered decisions still require attribution review.
+
+The same-corpus sample does not establish external-court, OCR or human legal accuracy. One synthetic-test quotation safety fix was made before inspecting the reserved metrics; both freezes and the amendment are preserved. [Protocol, 400-word comparison, limitations and explanation](docs/coverage_upgrade.md) · [Full results](evaluation/coverage_upgrade_reserved.json) · [Per-case scores](evaluation/coverage_upgrade_per_case.csv).
+
+The earlier **20.94 ROUGE-L**, versus lead **24.13**, remains the recorded 4.6 result on the **different official 100-case test set**. Do not compare that old number directly with this new sample. [Preserved historical benchmark](docs/current_summary_benchmark.md).
 
 ## What the recorded experiments show
 

@@ -1,0 +1,117 @@
+{
+  "version": "4.7.0",
+  "scope": "Original 10 development cases, matched caches or fresh CUDA inference when segmentation changed; no unseen accuracy claim",
+  "checks_passed": 29,
+  "check_count": 29,
+  "documents": [
+    {
+      "file": "16700_2025_12_1501_70762_Judgement_04-May-2026.pdf",
+      "sha256": "7d067014e33e4cf1b9047ff129672aedd80396b1a2cdd53225cb5d2fcf511cb9",
+      "checks": {
+        "decision: set aside": true,
+        "decision: restored": true,
+        "decision: appeals stand allowed": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "16856_2025_1_1501_65035_Judgement_14-Oct-2025.pdf",
+      "sha256": "c5d4298fda2a59858d48160f293d0253b97ac8b540c33242b72f4f320c7541f2",
+      "checks": {
+        "decision: arbitrator stands dismissed": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "21745_2025_8_5_65910_FinalOrder_18-Nov-2025.pdf",
+      "sha256": "a27ae8f98d1468a6f592898491b801d9d3eef5abbbed8ee86d7df247c28b2984",
+      "checks": {
+        "decision: appeals succeed": true,
+        "decision: 4,00,00,000": true,
+        "decision: eight weeks": true,
+        "decision: six months": true,
+        "decision: subject to the deposit": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "21763_2024_10_1501_62909_Judgement_01-Aug-2025.pdf",
+      "sha256": "d55e7c88d036a3c83a91aa17c7fe6b28b4412a1ec83ee1196e4739538d239991",
+      "checks": {
+        "decision: larger Bench": true,
+        "decision: Chief Justice of India": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "28002_2025_8_1501_65386_Judgement_03-Nov-2025.pdf",
+      "sha256": "ff0708c54a73e1202a42a8a59f77ca8eaab032c646e8a20d13209e993126b901",
+      "checks": {
+        "decision: appeal is dismissed": true,
+        "decision: no order as to costs": true,
+        "issue: Section 47": true
+      },
+      "rescored": true,
+      "exact_evidence": true
+    },
+    {
+      "file": "38267_2023_7_1502_63035_Judgement_06-Aug-2025.pdf",
+      "sha256": "f04abc46e77bf9b49cd51cfefeb3364283c60f336b91a0c07f0277f8c22fc68f",
+      "checks": {
+        "decision: 16,60,891": true,
+        "decision: 6%": true,
+        "decision: six (6) weeks": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "39506_2023_12_1502_61313_Judgement_28-Apr-2025.pdf",
+      "sha256": "b8c887125ceafb19cee02dff4192de11218c1a3aed38e43af5c6960f1802d558",
+      "checks": {
+        "decision: quash the FIR": true,
+        "decision: no further proceedings": true,
+        "decision: appeal stands allowed": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "42369_2018_12_2_59169_Judgement_04-Feb-2025.pdf",
+      "sha256": "1f372427500c6e6ee269612bba705508477fab6f24b3a49880b9907e1c9d0ad0",
+      "checks": {
+        "decision: 4,000": true,
+        "decision: four months": true,
+        "decision: attaining majority": true,
+        "decision: date of filing": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "49411_2024_12_1501_59334_Judgement_12-Feb-2025.pdf",
+      "sha256": "d2cce40f859e550193fc609393c9aa817b08a9865dde295d8f7155bce0426db9",
+      "checks": {
+        "decision: present petition is hereby dismissed": true,
+        "issue: primary grievance": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    },
+    {
+      "file": "57004_2024_11_1502_60362_Judgement_25-Mar-2025.pdf",
+      "sha256": "f52e93afdf998288bada4227dbcf82f9154ff7ad9914b11be8d812d19fb1a739",
+      "checks": {
+        "decision: released on bail": true,
+        "decision: 69 of 2024": true,
+        "decision: not expressed any opinion on the merits": true
+      },
+      "rescored": false,
+      "exact_evidence": true
+    }
+  ]
+}

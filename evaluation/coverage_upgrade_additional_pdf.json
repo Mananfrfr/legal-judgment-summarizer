@@ -1,0 +1,53 @@
+{
+  "scope": "Four previously inspected development PDFs; targeted phrase coverage, not legal accuracy",
+  "documents": [
+    {
+      "file": "bank_25770_2025.pdf",
+      "sha256": "2ed45e4ce2d519e4f8972b34d5691463da92af63c011d336f3db2cc124e4e6eb",
+      "rescored": true,
+      "checks": {
+        "appeal is dismissed": true,
+        "stands affirmed": true,
+        "respective costs": true
+      },
+      "source_check": true
+    },
+    {
+      "file": "compensation_28339_2025.pdf",
+      "sha256": "7ebd1766cf784ae21cec7bb4523b245e91c1f7bc816e50ce1504a5887403396d",
+      "rescored": false,
+      "checks": {
+        "67,36,084": true,
+        "7%": true,
+        "six weeks": true,
+        "date of the filing": true,
+        "jointly and severally": true,
+        "recover its share": true,
+        "appeals are accordingly allowed": true
+      },
+      "source_check": true
+    },
+    {
+      "file": "cuddalore_13548_2025.pdf",
+      "sha256": "4a818326d47bcf3d33ab3016f44e7c6de72004bc4898f41c32dc2a516d7cc7c0",
+      "rescored": false,
+      "checks": {
+        "appeals fail": true,
+        "not expressed any views on the merits": true
+      },
+      "source_check": true
+    },
+    {
+      "file": "aptel_134_2025.pdf",
+      "sha256": "baa79e18c55197cecf31d30e3a4b76564c81935535a83c0f8448fafcbecea2de",
+      "rescored": false,
+      "checks": {
+        "Appeal is allowed": true,
+        "set aside": true,
+        "shall not disable": true,
+        "other remedies": true
+      },
+      "source_check": true
+    }
+  ]
+}

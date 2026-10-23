@@ -172,7 +172,7 @@ No model wins every metric. Report the entire comparison, not just the best numb
 display(results.round(4))
 results.plot.bar(x='method', y=['rouge1_f1', 'rouge2_f1', 'rougeL_f1'], figsize=(10, 4),
                  title='Recorded Stage 3.6 official test (100 cases)')
-'''),md('''## 3. Current 4.6 pipeline: measured automatic scores
+'''),md('''## 3. Earlier 4.6 pipeline: measured automatic scores
 This table is from an actual run of the frozen current pipeline on all 100 official IN-Abs test judgments. The primary setting is `pipeline_800`; `lead_800` is the opening-sentence baseline. The 400-word rows are a secondary comparison.
 Scores are ROUGE F1 points on a 0–100 scale, not percentages of legally correct summaries. The test set was used before, so this is a reused benchmark. The code and weights were not tuned during this run. Read `docs/current_summary_benchmark.md` for lengths, failures, paired differences and limitations.
 '''),code('''measured = json.loads((ROOT / 'evaluation/current_summary_benchmark.json').read_text())
@@ -184,6 +184,22 @@ for method, values in measured['methods'].items():
                  'L lower 95%': 100 * interval['ci95_low'], 'L upper 95%': 100 * interval['ci95_high']})
 display(pd.DataFrame(rows).round(2))
 print('Cases:', measured['case_count'], '| Legal accuracy measured:', measured['automatic_legal_accuracy'])
+'''),md('''### 3b. Version 4.7: compare the upgrade on the same reserved cases
+This is a different, 100-case sample from unused IN-Abs training pairs, excluding the known 1,040 selector train/dev IDs and exact source duplicates. The candidate was tuned on the old 40-case development set and frozen before this evaluation. Read `docs/coverage_upgrade.md` for the exposure audit and limitations.
+
+The code still uses the same trained weights. It fixes quotation handling, recognizes more disposition forms, avoids copying huge paragraphs as decisions and spends unused summary space on ranked evidence. Compare the old and upgraded rows **within this table**, not across different datasets. More populated decision sections do not prove all decisions are correctly attributed.
+'''),code('''upgrade = json.loads((ROOT / 'evaluation/coverage_upgrade_reserved.json').read_text())
+rows = []
+for method, values in upgrade['methods'].items():
+    rows.append({'method': method,
+                 'ROUGE-1': 100 * values['rouge1_f1']['mean'],
+                 'ROUGE-2': 100 * values['rouge2_f1']['mean'],
+                 'ROUGE-L': 100 * values['rougeL_f1']['mean'],
+                 'mean words': values['mean_words'],
+                 'empty decisions': values['empty_decision'] if not method.startswith('lead') else None})
+display(pd.DataFrame(rows).round(2))
+print('Reserved cases:', upgrade['cases'], '| Legal accuracy measured:', upgrade['automatic_legal_accuracy'])
+print('Paired 800-word ROUGE-L change:', upgrade['paired']['800_minus_baseline'])
 '''),md('''## 4. Why historical scores and source checks are separate
 The app now scores the full extracted judgment in overlapping windows and builds structured sections with evidence checks. That changes the inference protocol. The Stage 3.6 numbers describe the earlier fixed-budget experiment, not the current app.
 All extracted sentences being scored means coverage of extracted candidates; it does not prove flawless PDF extraction or complete summaries.
@@ -217,7 +233,7 @@ four=[md('''# 04 · Final pipeline and explainable demonstration
 **Question:** How does a new judgment become a reviewable brief?
 
 **PDF/TXT → source sentences → trained scores and roles → evidence-grounded sections → audit → human review.**
-The existing trained weights and checkpoint checks are preserved. Version 4.6 improves decision attribution, retains qualifications and recovers some unclosed PDF quotations with a review warning. See `docs/decision_upgrade.md` for development results and remaining errors; no new unseen-document accuracy is claimed.
+The existing trained weights and checkpoint checks are preserved. Version 4.7 improves quote handling, decision recognition and use of the summary budget. See `docs/coverage_upgrade.md` and Notebook 03 for the same-corpus reserved comparison and remaining limits. Reference overlap is not legal accuracy.
 '''),*setup,
 md('''## 1. Choose the demonstration mode
 The invented TXT example runs without downloads. For a real trained-model demo, run `scripts/download_models.py` once, set `USE_TRAINED_MODEL=True`, and provide a judgment path. The supplied model remains your actual fine-tuned encoder and trained heads; we do not substitute a base BERT model.
@@ -240,6 +256,8 @@ print('Windows for a hypothetical 350-sentence judgment:')
 print(list(window_ranges(350)))
 '''),md('''## 4. Produce the brief
 The model ranks candidates; source and attribution rules organize background, issues, reasoning and directions. Complete operative passages can exceed the requested word target. Exact-span checks reject modified source evidence. A missing section is shown explicitly rather than invented.
+
+After the core sections are selected, remaining space is filled using learned importance and a penalty for repeated content. Additional sentences must fit the remaining allowance. Model-only reasoning candidates are marked for attribution review; a high score cannot turn a known letter or submission into court reasoning.
 '''),code('''result = summarize_document(INPUT, model=model, budget=BUDGET, ocr='off')
 display(Markdown(result['markdown']))
 '''),md('''## 5. Inspect the audit before trusting the result
