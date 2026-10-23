@@ -1,0 +1,10 @@
+{
+  "recorded_utc": "2026-10-23T08:55:38.571901+00:00",
+  "reason": "Synthetic adversarial check: a straight opening quote immediately after a colon was mistaken for a closing mark.",
+  "change": "Remove colon from closing-quote punctuation; retain it as an opening context.",
+  "references_or_scores_inspected_before_amendment": false,
+  "earlier_reserved_report_existed_but_was_not_read": true,
+  "earlier_freeze": "candidate_freeze_before_quote_guard.json",
+  "final_report_label": "final",
+  "selection_policy": "No metric-driven tuning; preserve the earlier run and rerun after this pre-review safety amendment."
+}

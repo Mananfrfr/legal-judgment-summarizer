@@ -67,24 +67,36 @@ def cut_fragments(fragments, start, end):
         offset += len(f['text'])+1
     return out
 
+def _quote_step(text,i,stack):
+    c=text[i]
+    if c in '‘“':stack.append('single' if c=='‘' else 'double')
+    elif c in '’”':
+        if c=='’' and i and i+1<len(text) and text[i-1].isalpha() and text[i+1].isalpha():return
+        family='single' if c=='’' else 'double'
+        if family in stack:del stack[len(stack)-1-stack[::-1].index(family):]
+    elif c=='"':
+        previous=text[i-1] if i else ''
+        following=text[i+1] if i+1<len(text) else ''
+        closing=bool(previous and (previous.isalnum() or previous in '.!?;)]'))
+        opening=bool(following and not following.isspace() and (not previous or previous.isspace() or previous in '(:['))
+        if closing:
+            # An orphan closing mark is not the start of a document-long quote.
+            if 'double' in stack:del stack[len(stack)-1-stack[::-1].index('double'):]
+        elif opening:
+            # A clear new opening after a missing close must not invert state.
+            if not stack or stack[-1]!='double':stack.append('double')
+        elif stack and stack[-1]=='double':stack.pop()
+        else:stack.append('double')
+
 def advance_quotes(text,stack):
-    """Track quote families consistently; apostrophes within words are not quotes."""
-    for i,c in enumerate(text):
-        if c in '‘“':stack.append('single' if c=='‘' else 'double')
-        elif c in '’”':
-            if c=='’' and i and i+1<len(text) and text[i-1].isalpha() and text[i+1].isalpha():continue
-            family='single' if c=='’' else 'double'
-            if family in stack:del stack[len(stack)-1-stack[::-1].index(family):]
-        elif c=='"':
-            if stack and stack[-1]=='double':stack.pop()
-            else:stack.append('double')
+    """Use surrounding punctuation for straight quotes, not a blind toggle."""
+    for i in range(len(text)):_quote_step(text,i,stack)
 
 def quote_mask(text):
     stack,mask=[],[]
     for i,c in enumerate(text):
         mask.append(bool(stack))
-        if c=='’' and i and i+1<len(text) and text[i-1].isalpha() and text[i+1].isalpha():continue
-        advance_quotes(c,stack)
+        _quote_step(text,i,stack)
     return mask
 
 def _native_lines(page):

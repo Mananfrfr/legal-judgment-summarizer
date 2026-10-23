@@ -5,13 +5,15 @@ import re
 from stage44_source import read_document, verify_evidence
 from stage44_attribution import attribution_map, current_analysis, COURT, ASSESSMENT, PARTY, LEGAL_DISPUTE, assessment, PASSIVE_REPORTED
 
-VERSION = '4.6.0'
+VERSION = '4.7.0'
 SECTION_TITLES = {'background':'Background / allegations and procedural history',
                   'issue':'Issues / dispute context', 'reasoning':'Reasoning (consecutive source passages; attribution needs review)',
                   'decision':'Decision and operative directions'}
 HISTORICAL = re.compile(r'\b(?:had\s+(?:been\s+)?(?:dismissed|allowed|directed)|(?:High|Trial|Family|District|lower|appellate)\s+Court\s+(?:had|held|found|concluded|went|observed|ordered|directed|dismissed|allowed)|(?:counsel|appellant|respondent|petitioner)\s+(?:submitted|argued|contended|urged|prayed)|it\s+was\s+(?:held|ordered|directed|submitted)|in\s+the\s+case\s+of)\b',re.I)
 SUBJECT_OUTCOME = re.compile(r'\b(?:appeals?|petitions?|applications?|suit|(?:present|this|these)\s+(?:batch|group)\s+of\s+(?:matters|cases))\b.{0,110}?\b(?:stands?\s+(?:dismissed|allowed|disposed)|(?:is|are)\s+(?:hereby\s+|accordingly\s+|partly\s+|partially\s+)?(?:dismissed|allowed|disposed|rejected)|succeeds?|fails?)\b',re.I)
-DIRECT = re.compile(r'\b(?:we\s+(?:(?:hereby|accordingly|therefore|thus|further|also)\s+)*(?:direct|allow|dismiss|quash|set\s+aside|remand|restore|grant|clarify|modify|order|dispose|permit)|in\s+allowing\s+(?:the|this)\s+appeal)\b',re.I)
+DIRECT = re.compile(r'\b(?:we\s+(?:(?:hereby|accordingly|therefore|thus|further|also)\s+)*(?:direct|allow|dismiss|quash|set\s+aside|remand|restore|grant|clarify|modify|order|dispose|permit|accept\s+(?:the|this|these)\s+appeals?)|in\s+allowing\s+(?:the|this)\s+appeal)\b',re.I)
+TERMINAL_DISPOSITION = re.compile(r'^(?:(?:[A-Z]\.){1,6}\s*)?(?:The\s+)?(?:appeals?|petitions?)\s+(?:(?:partly|partially)\s+)?(?:allowed|dismissed|disposed\s+of|rejected)\.?$',re.I)
+MODAL_DISPOSITION = re.compile(r'\b(?:this|the|these)\s+(?:appeals?|petitions?)\s+must\s+(?:therefore\s+|accordingly\s+)?be\s+(?:dismissed|allowed|rejected)\b',re.I)
 ACTION = re.compile(r'\b(?:shall|is\s+directed|are\s+directed|set\s+aside|restored|quash(?:ed)?|modified|remand(?:ed)?|remit(?:ted)?|deposit(?:ed)?|payable|enhanced|release(?:d)?\s+on\s+bail|subject\s+to|exemption\b.{0,40}\bgranted|no\s+(?:order\s+as\s+to\s+)?costs|within\b.{0,50}\b(?:days?|weeks?|months?))\b',re.I)
 ISSUE = re.compile(r'\b(?:whether|questions?\s+(?:of\s+law|for\s+consideration|that\s+arises?|arising)|(?:main|sole|primary|principal|central|singular|next)\s+(?:issue|question|grievance)|issue\s+(?:before\s+us|concerning)|we\s+are\s+called\s+upon|controversy\s+(?:is|relates))\b',re.I)
 CONTEXT = re.compile(r'\b(?:seeks?|seeking|challeng\w*|aggrieved|assail\w*|prayer|grievance|contends?|disputes?|appeal\s+(?:arises|is\s+directed)|rejection\s+of|rejected\s+.*bail|appointment\s+of\s+.*arbitrator)\b',re.I)
@@ -33,7 +35,10 @@ def outcome_score(s, total):
     if s['quoted'] or text.rstrip().endswith('?'):
         return 0
     direct=bool(DIRECT.search(text))
-    disposition=bool(SUBJECT_OUTCOME.search(text))
+    # Short reporter closing lines are usable only near the document end.
+    terminal=s['id'] >= max(0,total-5) and bool(TERMINAL_DISPOSITION.fullmatch(text))
+    modal=s['id'] >= max(0,total-1)*.65 and bool(MODAL_DISPOSITION.search(text))
+    disposition=bool(SUBJECT_OUTCOME.search(text)) or terminal or modal
     if re.search(r'\b(?:interlocutory\s+application|permission\s+to\s+(?:produce|file)|exemption\s+from)\b',text,re.I):
         return 0 # Ancillary procedural relief cannot establish the main case outcome.
     if not (direct or disposition):
@@ -63,7 +68,7 @@ def build_brief(doc, budget=800, predictions=None, model_info=None):
     warnings=list(doc.warnings)
     sentences=doc.sentences
     attributes=attribution_map(doc)
-    eligible=[s for s in sentences if not s['quoted'] and len(s['sentence'].split()) >= 3]
+    eligible=[s for s in sentences if not s['quoted'] and (len(s['sentence'].split()) >= 3 or outcome_score(s,len(sentences))>=3)]
     scores={s['id']:outcome_score(s,len(sentences)) for s in eligible}
     excluded_roles={'party_submission','quoted_material','document_or_correspondence','reported_material'}
     anchors=[s for s in eligible if scores[s['id']] >= 3 and attributes[s['id']]['label'] not in excluded_roles]
@@ -86,8 +91,28 @@ def build_brief(doc, budget=800, predictions=None, model_info=None):
                     # Do not extend past a postscript into historical narration.
                     if not (HISTORICAL.search(p['text']) or PASSIVE_REPORTED.search(p['text'])) or DIRECT.search(outcome_text(p['text'])):
                         cluster.add(p['id'])
+        allowed_by_paragraph={}
+        for pid in cluster:
+                members=[m for m in eligible if m['paragraph_id']==pid]
+                chosen={m['id'] for m in members}
+                if sum(len(m['sentence'].split()) for m in members)>max(300,int(budget)*.6):
+                    # Broken paragraph boundaries can join hundreds of sentences
+                    # (including separate opinions). Do not copy that whole block.
+                    near=[m for m in anchors if m['paragraph_id']==pid and abs(m['id']-anchor['id'])<=8]
+                    chosen={m['id'] for m in near}
+                    for m in near:
+                        at=next(i for i,x in enumerate(members) if x['id']==m['id'])
+                        for direction in (-1,1):
+                            j=at+direction
+                            while 0<=j<len(members):
+                                neighbor=members[j]
+                                if attributes[neighbor['id']]['label'] in excluded_roles:break
+                                if not (ORDER_DETAIL.search(neighbor['sentence']) or MERITS_QUALIFICATION.search(neighbor['sentence'])):break
+                                chosen.add(neighbor['id']);j+=direction
+                    warnings.append('Oversized source paragraph: decision selected from local operative sentences and adjacent conditions; check separate opinions and missing paragraph boundaries.')
+                allowed_by_paragraph[pid]=chosen
         for s in eligible:
-            if s['paragraph_id'] in cluster:
+            if s['id'] in allowed_by_paragraph.get(s['paragraph_id'],set()):
                 decision_ids.add(s['id'])
                 sections['decision'].append(_entry(s,'operative paragraph; preserve conditions and context'))
         # Mixed conclusion paragraphs can first explain the law, then give an
@@ -217,6 +242,36 @@ def build_brief(doc, budget=800, predictions=None, model_info=None):
             entry['reasoning_block_id']=block['entries'][0]['id']
             sections['reasoning'].append(entry);used.add(s['id'])
         selected_tokens|=block['tokens']
+    # Redistribute unused section allowance instead of returning a 300-word
+    # brief for an 800-word request. The learned selector ranks additions;
+    # known quotations, submissions and reported rulings cannot become reasons.
+    if predictions:
+        def tokens(s):return set(re.findall(r'\b[a-z]{3,}\b',s['sentence'].lower()))
+        selected_token_sets=[tokens(s) for entries in sections.values() for s in entries]
+        candidates=[]
+        for s in pool:
+            if s['id'] in used:continue
+            attr=attributes[s['id']]['label'];p=pred(s)
+            if current_analysis(s,attributes):section='reasoning'
+            elif attr=='unresolved' and p.get('role_code') in {'ANALYSIS','RATIO'} and role(s,{'ANALYSIS','RATIO'})>=.65:section='reasoning'
+            elif attr not in {'heading_fragment','citation_introduction'}:section='background'
+            else:continue
+            candidates.append((s,section,tokens(s)))
+        available=max(0,int(budget)-sum(word_count(v) for v in sections.values()))
+        while candidates and available:
+            def coverage_score(item):
+                s,section,tok=item
+                redundancy=max((len(tok&t)/max(1,len(tok|t)) for t in selected_token_sets),default=0)
+                return importance(s)+.35*(1-s['id']/max(1,len(sentences)))-.6*redundancy
+            item=max(candidates,key=coverage_score);candidates.remove(item)
+            s,section,tok=item;n=len(s['sentence'].split())
+            if n>available:continue
+            if any(len(tok&t)/max(1,len(tok|t))>.85 for t in selected_token_sets):continue
+            e=_entry(s,'learned importance with redundancy penalty; unused budget redistributed; attribution requires review')
+            if section=='reasoning':e['reasoning_block_id']=s['id']
+            sections[section].append(e);used.add(s['id']);selected_token_sets.append(tok);available-=n
+        if any(attributes[e['id']]['label']=='unresolved' for e in sections['reasoning']):
+            warnings.append('Some reasoning extracts use predicted roles without an explicit court-voice cue; verify their attribution in the source.')
     for entries in sections.values():
         entries.sort(key=lambda s:s['id'])
         for entry in entries:

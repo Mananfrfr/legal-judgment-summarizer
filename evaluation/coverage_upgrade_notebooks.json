@@ -1,0 +1,16 @@
+[
+  {
+    "notebook": "03_model_evaluation.ipynb",
+    "executed": true,
+    "isolated_kernel": true,
+    "full_training": false,
+    "seconds": 14.36
+  },
+  {
+    "notebook": "04_final_pipeline.ipynb",
+    "executed": true,
+    "isolated_kernel": true,
+    "full_training": false,
+    "seconds": 6.74
+  }
+]

@@ -1,0 +1,219 @@
+{
+  "split": "development",
+  "cases": 40,
+  "hashes": {
+    "annotations.py": "9d4eefa9169f7cbdc85bb0d42e664b8dde2f8c7ce621627db99b66b6bc29da75",
+    "crf.py": "2e6dec5851175e194883543f57be1806210c64011abbb89f61bfe75b027d1bee",
+    "dataset_index.py": "43b0f834555fb6d969c9d448938ba73698d7766008518014ec9e32cab69fc8f0",
+    "data_utils.py": "3ecce622bf901d6df2f0f6db7526bdcb777027d00a75bd57eeba32e3e40e1f2e",
+    "fast_rouge.py": "cc31dbbe8136388004b87ef410b9e4d866e8a6e588f59189fb075bc18608b929",
+    "notebook_runtime.py": "c599aa95a1ded1ce070427badde30fe67a83241ade45716e2f0412fb21068572",
+    "project_api.py": "b3700e90317fe6cd623238300cbcd3f97f84f850e24a1ec01a0fbf37b52a26a4",
+    "review_server.py": "33f22ad8457cac731a378467df021d97be326f2efe25696b783a1df2ff32d312",
+    "review_service.py": "957c5cd5ac10d86bbea1804ae4550735922d34536fffc1e05de3c58da0ccb5fc",
+    "selection_training.py": "0a1b97f9ec5b290bef79379e4cea50beb85b052e3907139da6101af9bbad1705",
+    "stage44_app.py": "edb6c7151ce760d8cf59d8d53b14c7d515f79c1dec1fd40f20d77670ab34a861",
+    "stage44_attribution.py": "b8cf9aa448858e39c53fb21bafdc48b2635ee13337ba14e568deac402b9410ad",
+    "stage44_brief.py": "9b7453c9ef6306b796f8a84cb00d65d85b8234680c7181eb39d143e4b814779f",
+    "stage44_cli.py": "ee22ba688a668788c41daf21bbb2d0b7f650c33fe98bdf6f3e557c2c5f1e7f44",
+    "stage44_model.py": "6f2c57d7e88c47113201a852b7f30df2111ccf7cdb3c9059998001c31dc75d15",
+    "stage44_source.py": "30e951aad75d1665bd274d684009491c0a9f96f0b5ac6c3cca57f00ec3d73e96",
+    "stage44_windows.py": "e6333308e2abf998d663c9a9ac83232b7c3c64401dd79a87223e6a704e810d62",
+    "summary_evaluation.py": "a95517f70be2f3c8409a4c4393946bd50843713391448301c258ed4cb15c6d74",
+    "train_models.py": "b8fcc610a90e4384e8efb03ec957e25d887d6a0207dfe7154da1f9c396f9f617",
+    "train_selector.py": "17798d886e5bfdb52ffdb2c35b79fbbc1d66a1d74152321e3122d0ae40ec440a"
+  },
+  "methods": {
+    "baseline_400": {
+      "rouge1_f1": {
+        "mean": 0.3505377467110423,
+        "ci95_low": 0.30836028376958563,
+        "ci95_high": 0.39504816323817993,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.18042682983901898,
+        "ci95_low": 0.15262779695377182,
+        "ci95_high": 0.20968555489040935,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.20572297272849535,
+        "ci95_low": 0.1811886559238756,
+        "ci95_high": 0.2320387965414833,
+        "cases": 40
+      },
+      "mean_words": 491.675,
+      "over_budget": 4,
+      "empty_decision": 17,
+      "empty_reasoning": 10,
+      "source_pass": 40
+    },
+    "baseline_800": {
+      "rouge1_f1": {
+        "mean": 0.38220926392898874,
+        "ci95_low": 0.3411971827928308,
+        "ci95_high": 0.4249270487367255,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.19618077308904072,
+        "ci95_low": 0.16853258495731788,
+        "ci95_high": 0.22488621928446445,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.21923728937749526,
+        "ci95_low": 0.1953148690345861,
+        "ci95_high": 0.2440758158871471,
+        "cases": 40
+      },
+      "mean_words": 540.825,
+      "over_budget": 1,
+      "empty_decision": 17,
+      "empty_reasoning": 10,
+      "source_pass": 40
+    },
+    "candidate_400": {
+      "rouge1_f1": {
+        "mean": 0.4964608689970513,
+        "ci95_low": 0.4598840984784549,
+        "ci95_high": 0.5335216881689459,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.28047947753193847,
+        "ci95_low": 0.2501702236693455,
+        "ci95_high": 0.3104709012073582,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.27019730392720887,
+        "ci95_low": 0.24718026965141524,
+        "ci95_high": 0.29327760656903884,
+        "cases": 40
+      },
+      "mean_words": 406.825,
+      "over_budget": 7,
+      "empty_decision": 4,
+      "empty_reasoning": 2,
+      "source_pass": 40
+    },
+    "candidate_800": {
+      "rouge1_f1": {
+        "mean": 0.5667586793887007,
+        "ci95_low": 0.5288448306081661,
+        "ci95_high": 0.6013966412341105,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.3538346474802213,
+        "ci95_low": 0.32170667651738527,
+        "ci95_high": 0.384727717913847,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.31691428371851293,
+        "ci95_low": 0.28997299668195176,
+        "ci95_high": 0.34398341606294147,
+        "cases": 40
+      },
+      "mean_words": 785.375,
+      "over_budget": 1,
+      "empty_decision": 4,
+      "empty_reasoning": 2,
+      "source_pass": 40
+    },
+    "lead_400": {
+      "rouge1_f1": {
+        "mean": 0.412768292639435,
+        "ci95_low": 0.3796592437483626,
+        "ci95_high": 0.4460161760237811,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.19403753087883574,
+        "ci95_low": 0.17124908974273845,
+        "ci95_high": 0.2174708847623851,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.19706918183635078,
+        "ci95_low": 0.18153503060786738,
+        "ci95_high": 0.21400962259467637,
+        "cases": 40
+      },
+      "mean_words": 374.675,
+      "over_budget": 0,
+      "empty_decision": 0,
+      "empty_reasoning": 0,
+      "source_pass": 0
+    },
+    "lead_800": {
+      "rouge1_f1": {
+        "mean": 0.5173573893628504,
+        "ci95_low": 0.48126970267810865,
+        "ci95_high": 0.5503963560531828,
+        "cases": 40
+      },
+      "rouge2_f1": {
+        "mean": 0.2851917046004876,
+        "ci95_low": 0.25412826080230727,
+        "ci95_high": 0.31641600738888603,
+        "cases": 40
+      },
+      "rougeL_f1": {
+        "mean": 0.2689048626667601,
+        "ci95_low": 0.24468074292802014,
+        "ci95_high": 0.29472789860625576,
+        "cases": 40
+      },
+      "mean_words": 770.7,
+      "over_budget": 0,
+      "empty_decision": 0,
+      "empty_reasoning": 0,
+      "source_pass": 0
+    }
+  },
+  "paired": {
+    "800_minus_baseline": {
+      "mean": 0.09767699434101772,
+      "ci95_low": 0.06449578240009013,
+      "ci95_high": 0.1304611251213757,
+      "cases": 40
+    },
+    "800_minus_lead": {
+      "mean": 0.048009421051752856,
+      "ci95_low": 0.025805959762091872,
+      "ci95_high": 0.07013303461582104,
+      "cases": 40
+    },
+    "400_minus_baseline": {
+      "mean": 0.06447433119871346,
+      "ci95_low": 0.04281371774169797,
+      "ci95_high": 0.0870145990181289,
+      "cases": 40
+    },
+    "400_minus_lead": {
+      "mean": 0.07312812209085803,
+      "ci95_low": 0.055372098211059456,
+      "ci95_high": 0.0910677945225299,
+      "cases": 40
+    }
+  },
+  "baseline_commit": "6071e3c64f92199edd972c81f408bf5c0c1b2664",
+  "automatic_legal_accuracy": false,
+  "weights_retrained": false,
+  "scale": "0 to 1; multiply by 100 for ROUGE points, not legal correctness percentages",
+  "limitations": [
+    "Same-corpus reserved sample, not external or human-validated accuracy.",
+    "Exact normalized text duplicates excluded; near duplicates and encoder pretraining overlap not cleared.",
+    "Official 100 test documents were inspected previously and are not used for tuning or this reserved evaluation."
+  ],
+  "runtime": {
+    "torch": "2.6.0+cu124",
+    "gpu": "NVIDIA GeForce RTX 2050",
+    "encoder_signature": "83e3781d07cb6130de42210a8d676043af1057b1a5cb106626eb98a5832da615",
+    "batch_size": 3
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "version": "4.7.0",
+  "mode": "trained_full_document",
+  "trained_demo": true,
+  "source_check": true,
+  "decision_present": true,
+  "fixture": "examples/demo_judgment.txt",
+  "url": "http://127.0.0.1:7861"
+}
