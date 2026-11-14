@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-15",
+  "scope": "Faculty metrics and decision-detail audit additions; no trained-model rerun",
+  "tests": {
+    "passed": 110,
+    "training_tests_not_run": 9,
+    "reason": "Torch and trained weights are not installed in the restored checkout"
+  },
+  "checks": [
+    "All 600 saved summary case/method rows and all aggregate F1 values validated",
+    "Synthetic matching, wrong outcome, wrong amount, wrong deadline, dropped condition and omitted direction examples passed",
+    "Saved-summary CLI check passed",
+    "New cells in Notebooks 03 and 04 executed; full isolated notebook executions not rerun",
+    "App API and ZIP export integration passed; browser JavaScript syntax checked; no visual browser run"
+  ],
+  "selection_changed": false,
+  "weights_changed": false,
+  "llm_judge_added": false,
+  "legal_accuracy_measured": false
+}

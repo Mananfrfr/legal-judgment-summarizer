@@ -33,6 +33,9 @@ class AppTests(unittest.TestCase):
         url=f'/api/jobs/{key}/documents/0'
         original=self.client.get(url).json()['result']
         self.assertTrue(original['audit']['exact_source_check_passed'])
+        checks=original['audit']['decision_detail_checks']
+        self.assertFalse(checks['legal_correctness_verified'])
+        self.assertGreater(checks['counts']['deadline']['summary_claim_count'],0)
         edited={k:'Reviewer correction: '+k for k in original['sections']}
         review=self.client.put(url+'/review',json={'sections':edited,'notes':'Check the deadline.'},headers=HEADERS)
         self.assertEqual(review.status_code,200,review.text)
@@ -42,6 +45,7 @@ class AppTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw.content)) as z:
             self.assertIn('document_01/reviewer_draft.md',z.namelist())
             self.assertEqual(json.loads(z.read('document_01/machine_evidence.json')),original)
+            self.assertIn('Outcome, amount and deadline checks',z.read('document_01/machine_summary.md').decode())
             self.assertFalse(any('input_' in p for p in z.namelist()))
 
     def test_another_session_cannot_read_or_export_job(self):

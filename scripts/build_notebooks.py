@@ -200,6 +200,13 @@ for method, values in upgrade['methods'].items():
 display(pd.DataFrame(rows).round(2))
 print('Reserved cases:', upgrade['cases'], '| Legal accuracy measured:', upgrade['automatic_legal_accuracy'])
 print('Paired 800-word ROUGE-L change:', upgrade['paired']['800_minus_baseline'])
+'''),md('''### 3c. Faculty precision, recall and F1 table
+The saved per-case records contain all three statistics. F1 is computed for each document and then averaged, so do not recompute it from the two displayed average columns. The complete report, role comparisons and definitions are in `docs/faculty_metrics_report.md`. These are saved reference-overlap results, not a new inference run or correctness percentage.
+'''),code('''faculty = json.loads((ROOT / 'evaluation/faculty_metrics.json').read_text())
+values = faculty['methods']['candidate_800']
+display(pd.DataFrame([{'metric': metric,
+    **{stat: 100 * values[metric + '_' + stat] for stat in ['precision', 'recall', 'f1']}}
+    for metric in ['rouge1', 'rouge2', 'rougeL']]).round(2))
 '''),md('''## 4. Why historical scores and source checks are separate
 The app now scores the full extracted judgment in overlapping windows and builds structured sections with evidence checks. That changes the inference protocol. The Stage 3.6 numbers describe the earlier fixed-budget experiment, not the current app.
 All extracted sentences being scored means coverage of extracted candidates; it does not prove flawless PDF extraction or complete summaries.
@@ -268,6 +275,13 @@ Exact text matching checks copying. It cannot prove attribution, completeness or
     'flags': ', '.join(result['audit']['flags'])}]))
 saved = save_summary(result, ROOT / 'outputs/presentation_demo')
 print('Saved summary and evidence:', saved)
+'''),md('''### 5b. Inspect outcome, amount and deadline checks
+The rules independently collect candidate operative details and compare each machine decision extract with its linked source sentence. Changed details, possible omissions and uncertain attribution are flagged. Matching a value is not proof of whole-summary correctness. Reviewer edits are not automatically checked. See `docs/summary_correctness_checks.md` or run `python scripts/demo_summary_checks.py` for deliberately corrupted examples.
+'''),code('''checks = result['audit']['decision_detail_checks']
+display(pd.DataFrame(checks['claims']))
+display(pd.DataFrame(checks['possible_omissions']))
+print('Flags:', checks['flags'])
+print('Legal correctness verified:', checks['legal_correctness_verified'])
 '''),md('''## 6. Use the browser app
 On a computer with the dependencies and model installed, run `python src/stage44_app.py` from the repository. Open `http://127.0.0.1:7861` **on that same computer**. Colab's remote localhost is not your laptop's localhost.
 The app shows source pages, exact highlights and separately saved reviewer drafts. It is a local research preview; the Colab batch notebook is the supported cloud workflow.

@@ -46,6 +46,8 @@ If your faculty wants to inspect the initial ML pipeline, open [Notebook 00](../
 
 ## Vocabulary in one line
 
+For the full precision/recall/F1 tables and their interpretation, see the [faculty metrics report](faculty_metrics_report.md). For the new outcome, amount and deadline screen, see [correctness-check examples and limits](summary_correctness_checks.md). Run `python scripts/demo_summary_checks.py` to show detection of intentionally changed synthetic details. No LLM judge or human-validated factual-accuracy score is included.
+
 - Embedding: a numerical representation of text.
 - Fine-tuning: adapting a pretrained model to a labeled task.
 - Logits: raw prediction scores before probabilities.

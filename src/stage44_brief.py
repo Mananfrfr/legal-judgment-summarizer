@@ -5,7 +5,7 @@ import re
 from stage44_source import read_document, verify_evidence
 from stage44_attribution import attribution_map, current_analysis, COURT, ASSESSMENT, PARTY, LEGAL_DISPUTE, assessment, PASSIVE_REPORTED
 
-VERSION = '4.7.0'
+VERSION = '4.7.1'
 SECTION_TITLES = {'background':'Background / allegations and procedural history',
                   'issue':'Issues / dispute context', 'reasoning':'Reasoning (consecutive source passages; attribution needs review)',
                   'decision':'Decision and operative directions'}
@@ -305,6 +305,8 @@ def audit_brief(doc, result):
     candidates=[]
     historical_candidates=[]
     attributes=attribution_map(doc)
+    from summary_checks import check_summary
+    detail_checks=check_summary(doc,result)
     marker=re.compile(r'\b(?:we\s+(?:direct|order|quash|allow|dismiss|clarify)|(?:shall|must)\s+(?:be\s+)?(?:pay|deposit|refund|release|continue|remain)|within\b.{0,45}\b(?:weeks?|months?|days?)|subject\s+to|stands?\s+(?:allowed|dismissed)|appeals?\s+succeed|larger\s+bench)\b',re.I)
     for s in doc.sentences:
         if not s['quoted'] and marker.search(s['sentence']) and s['id'] not in decision_ids:
@@ -318,6 +320,7 @@ def audit_brief(doc, result):
                 candidates.append(entry)
     missing=[k for k,v in result['sections'].items() if not v]
     flags=[]
+    if detail_checks['flags']:flags.append('DECISION_DETAIL_REVIEW')
     if invalid: flags.append('SOURCE_MISMATCH')
     if missing: flags.append('MISSING_SECTION')
     if candidates: flags.append('POSSIBLE_OMITTED_DIRECTIONS')
@@ -330,6 +333,7 @@ def audit_brief(doc, result):
     if result['model'].get('long_sentence_ids'): flags.append('ENCODER_TRUNCATION_REVIEW')
     return dict(status='blocked_source_mismatch' if invalid else 'review_required' if flags else 'source_checks_passed',
                 flags=flags,invalid_evidence_ids=invalid,missing_sections=missing,
+                decision_detail_checks=detail_checks,
                 exact_source_check_passed=not invalid, selected_evidence_count=len(selected),
                 possible_omitted_directions=candidates, human_validation_required=True,
                 reported_or_historical_direction_mentions=historical_candidates,
@@ -374,6 +378,9 @@ def render_markdown(result):
         out+=['## Additional passages to check (may be historical; not asserted as current orders)']
         for e in audit['possible_omitted_directions']:
             out.append(f'- **[p. {e["page"]}–{e["page_end"]}; evidence {e["id"]}]** {e["sentence"]}')
+    if audit.get('decision_detail_checks'):
+        from summary_checks import checks_markdown
+        out.append(checks_markdown(audit['decision_detail_checks']))
     return '\n\n'.join(out)
 
 def summarize_file(filename,budget=800,model=None,model_choice=None,ocr='auto'):

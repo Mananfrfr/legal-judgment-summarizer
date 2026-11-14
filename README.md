@@ -1,6 +1,6 @@
 # Legal Judgment Summarizer
 
-**Version 4.7.0 — review-assisted research app.** Better quotation handling, decision recognition and use of the summary budget, with a reserved-case comparison. **104 automated tests pass.** Trained weights are unchanged. [Changes, results and limitations](docs/coverage_upgrade.md).
+**Version 4.7.1 — review-assisted research app.** Adds source-linked outcome, amount and deadline checks plus a reproducible faculty metrics report. Summary selection and trained weights are unchanged from 4.7.0; the scores below are saved evaluation results, not a new inference run. [Coverage results](docs/coverage_upgrade.md) · [New diagnostic checks](docs/summary_correctness_checks.md).
 
 An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
 
@@ -13,6 +13,8 @@ The four notebooks explain the logic in short steps. Heavy training is optional;
 ## Start here for the faculty presentation
 
 Read the [faculty walkthrough and viva questions](docs/faculty_walkthrough.md), then open the notebooks in order:
+
+**For precision, recall and F1:** use the [faculty metrics report](docs/faculty_metrics_report.md). It includes all six summary conditions and the recorded role-classification results. Rebuild it with `python scripts/build_faculty_metrics_report.py`. Demonstrate the new checks with `python scripts/demo_summary_checks.py` (invented data; no model download or API key).
 
 | Notebook | What you explain | Open |
 |---|---|---|
