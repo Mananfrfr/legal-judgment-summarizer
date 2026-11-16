@@ -10,6 +10,16 @@ The four notebooks explain the logic in short steps. Heavy training is optional;
 
 **Research preview:** the app requires human review. The original three-judgment check found two serious decision-section failures; their specified decision checks now pass after development fixes. Issue selection and reasoning omissions remain. Exact source matching is not legal accuracy. [Original evaluation](docs/current_pipeline_evaluation.md) · [4.6 follow-up](docs/decision_upgrade.md).
 
+## Demonstrate the local LLM judge
+
+On Windows x64, open PowerShell in the repository and run `.\Start-Judge.ps1 -Install`. The first run downloads about 1.15 GB and verifies both files. On later runs use `.\Start-Judge.ps1`. Keep that window open. In a second terminal start the configured review app with `.\Start-App.ps1` and open **http://127.0.0.1:7861/**. For a custom judge port, set `LEGAL_JUDGE_PORT` in the app terminal to match the judge launcher's `-Port`.
+
+Choose **Open example judgment** or upload your own judgment. **Brief** shows the extracts, **Parsed details** checks outcomes, money and deadlines, and **LLM review → Run local judge** compares sampled extracts with the source. Click a quotation to read its original page. The ZIP includes the judge findings alongside the machine brief and any saved reviewer edits.
+
+The local Qwen2.5-1.5B-Instruct model checks the last decision extract and the first extract in each other populated section. It reads nearby source text and the end of the last nonblank page. The model chooses a numbered source sentence. The app retrieves the quotation from the page offsets. It withholds support if the quotation omits part of the machine extract and flags decision evidence that appears to report an earlier ruling or a party’s position. A matching quotation can still be interpreted incorrectly. Coverage is shown as a count of extracts. Faculty precision, recall, F1 and ROUGE measurements remain in the [evaluation report](docs/faculty_metrics_report.md).
+
+Run `python scripts/demo_local_judge.py` with the judge server running to demonstrate four fictional controls. The [live test record](docs/local_judge_validation.md) includes the observed verdicts and failures.
+
 ## Start here for the faculty presentation
 
 Read the [faculty walkthrough and viva questions](docs/faculty_walkthrough.md), then open the notebooks in order:

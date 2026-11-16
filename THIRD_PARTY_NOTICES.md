@@ -1,5 +1,7 @@
 # Third-party sources
 
+- The optional local judge uses the [official Qwen2.5-1.5B-Instruct GGUF weights](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF) and the [llama.cpp Windows CPU runtime](https://github.com/ggml-org/llama.cpp/releases/tag/b12445). The launcher downloads pinned files from their publishers on request.
+
 - **InLegalBERT**, Law-AI: [model card](https://huggingface.co/law-ai/InLegalBERT). The card lists MIT licensing. The project's encoder is fine-tuned from this pretrained model; it is not a language model pretrained from scratch by this project. Credit the original model authors and paper, *Pre-training Transformers on Indian Legal Text*.
 - **OpenNyAI InRhetoricalRoles**: [dataset card](https://huggingface.co/datasets/opennyaiorg/InRhetoricalRoles). The card lists Apache-2.0 and requires acceptance of access conditions. Corpus authors: Kalamkar, Tiwari, Agarwal, Karn, Gupta, Raghavan and Modi; *Corpus for Automatic Structuring of Legal Documents*, LREC 2022. Dataset contents are not mirrored here.
 - **IN-Abs / IN-Ext / UK-Abs**: [official Zenodo record](https://zenodo.org/records/7152317), [official implementation](https://github.com/Law-AI/summarization). Authors: Shukla, Bhattacharya, Poddar, Mukherjee, Ghosh, Goyal and Ghosh; *Legal Case Document Summarization: Extractive and Abstractive Methods and their Evaluation*. Obtain the archive and its README from the publisher; this repository supplies an integrity-checked downloader rather than a dataset mirror.

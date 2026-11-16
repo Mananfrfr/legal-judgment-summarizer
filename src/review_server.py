@@ -1,5 +1,7 @@
 """Local-first HTTP review app. Remote binding requires explicit authentication."""
 import base64,hmac,os,secrets,tempfile
+from threading import Lock
+from local_judge import JudgeError, judge_summary
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI,Request,UploadFile,File,Form,HTTPException
@@ -29,9 +31,10 @@ class BodyLimit:
             return message
         await self.app(scope,limited_receive,send)
 
-def create_app(data_root=None,processor=None,password=None):
+def create_app(data_root=None,processor=None,password=None,judge_runner=judge_summary):
     data_root=data_root or os.environ.get('LEGAL_REVIEW_DATA',str(Path(tempfile.gettempdir())/'legal_review_v45'))
     store=ReviewStore(data_root,processor)
+    judge_lock=Lock()
     password=password if password is not None else os.environ.get('APP_PASSWORD','')
     @asynccontextmanager
     async def lifespan(app):
@@ -82,11 +85,14 @@ def create_app(data_root=None,processor=None,password=None):
     def index():return (ROOT/'review_app.html').read_text(encoding='utf8')
 
     @app.get('/api/health')
-    def health():return dict(status='ok',version=VERSION,model_configured=bool(os.environ.get('LEGAL_ENCODER_DIR') and os.environ.get('LEGAL_MODEL_BUNDLE')),public_accuracy_claim=False)
+    def health():
+        encoder=Path(os.environ.get('LEGAL_ENCODER_DIR',''))/'config.json'
+        bundle=Path(os.environ.get('LEGAL_MODEL_BUNDLE',''))
+        return dict(status='ok',version=VERSION,model_configured=encoder.is_file() and bundle.is_file(),public_accuracy_claim=False)
 
     @app.post('/api/jobs',status_code=202)
     async def upload(request:Request,files:list[UploadFile]=File(...),budget:int=Form(800),ocr:str=Form('auto'),evidence_only:bool=Form(False)):
-        if not 1<=len(files)<=MAX_FILES:raise ValueError(f'Choose 1–{MAX_FILES} documents.')
+        if not 1<=len(files)<=MAX_FILES:raise ValueError(f'Choose 1â€“{MAX_FILES} documents.')
         if not 100<=budget<=3000 or ocr not in {'auto','off','force'}:raise ValueError('Invalid summary settings')
         j=store.create(request.state.owner);total=0
         try:
@@ -118,7 +124,27 @@ def create_app(data_root=None,processor=None,password=None):
     @app.get('/api/jobs/{key}/documents/{index}')
     def document(key:str,index:int,request:Request):
         j,e=store.document(key,request.state.owner,index)
-        return dict(result=e['result'],review=j['reviews'].get(str(index)),is_pdf=j['files'][index]['path'].suffix=='.pdf')
+        return dict(result=e['result'],review=j['reviews'].get(str(index)),judge=e.get('judge'),is_pdf=j['files'][index]['path'].suffix=='.pdf')
+
+    @app.post('/api/jobs/{key}/documents/{index}/judge')
+    def judge(key:str,index:int,request:Request):
+        owner=request.state.owner
+        _,entry=store.document(key,owner,index)
+        if 'judge' in entry:return entry['judge']
+        if not judge_lock.acquire(blocking=False):
+            raise HTTPException(429,'The local judge is reviewing another document. Retry shortly.')
+        try:
+            if 'judge' in entry:return entry['judge']
+            report=judge_runner(entry['result'])
+            # Clearing an active workspace must also discard its pending report.
+            with store.lock:
+                _,entry=store.document(key,owner,index)
+                entry['judge']=report
+                return report
+        except JudgeError as exc:
+            raise HTTPException(503,str(exc)) from exc
+        finally:
+            judge_lock.release()
 
     @app.get('/api/jobs/{key}/documents/{index}/pages/{page}.png')
     def page_image(key:str,index:int,page:int,request:Request):

@@ -136,6 +136,8 @@ class ReviewStore:
                 prefix=f'document_{entry["index"]+1:02d}/';r=entry['result']
                 z.writestr(prefix+'machine_evidence.json',json.dumps(r,ensure_ascii=False,indent=2))
                 z.writestr(prefix+'machine_summary.md',r['markdown'])
+                if 'judge' in entry:
+                    z.writestr(prefix+'local_judge.json',json.dumps(entry['judge'],ensure_ascii=False,indent=2))
                 review=j['reviews'].get(str(entry['index']))
                 if review:
                     z.writestr(prefix+'reviewer_draft.json',json.dumps(review,ensure_ascii=False,indent=2))
