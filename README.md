@@ -1,133 +1,84 @@
 # Legal Judgment Summarizer
 
-**Version 4.7.1 — review-assisted research app.** Adds source-linked outcome, amount and deadline checks plus a reproducible faculty metrics report. Summary selection and trained weights are unchanged from 4.7.0; the scores below are saved evaluation results, not a new inference run. [Coverage results](docs/coverage_upgrade.md) · [New diagnostic checks](docs/summary_correctness_checks.md).
+A local app for turning English-language Indian judgments into extractive case briefs. Upload a PDF or text file to get a brief covering **background, issue, reasoning and decision**. Select a passage in the brief to see it highlighted on the original page. You can save a reviewer draft and export it alongside the machine summary and its evidence.
 
-An English legal NLP mini project: **classical ML → InLegalBERT → document BiLSTM → extractive sentence selection → evidence-linked review app**.
+## Quick start
 
-The four notebooks explain the logic in short steps. Heavy training is optional; the default demonstration uses invented examples and clearly labeled recorded results. The existing trained model is preserved; the inference pipeline includes the documented 4.7 coverage improvements.
+The following setup uses Python 3.11 and CPU inference. From the repository root, create a virtual environment and activate it in your shell.
 
-**Want to see the early ML code in full?** Open [00_classical_ml_and_word_bilstm](notebooks/00_classical_ml_and_word_bilstm.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/00_classical_ml_and_word_bilstm.ipynb)). This optional fifth notebook shows TF-IDF, majority baseline, KNN, logistic regression, SVM, error analysis, saved-model prediction and word-level BiLSTM training step by step. [Why the other notebooks are short and where the full code lives](docs/code_map.md).
-
-**Research preview:** the app requires human review. The original three-judgment check found two serious decision-section failures; their specified decision checks now pass after development fixes. Issue selection and reasoning omissions remain. Exact source matching is not legal accuracy. [Original evaluation](docs/current_pipeline_evaluation.md) · [4.6 follow-up](docs/decision_upgrade.md).
-
-## Demonstrate the local LLM judge
-
-On Windows x64, open PowerShell in the repository and run `.\Start-Judge.ps1 -Install`. The first run downloads about 1.15 GB and verifies both files. On later runs use `.\Start-Judge.ps1`. Keep that window open. In a second terminal start the configured review app with `.\Start-App.ps1` and open **http://127.0.0.1:7861/**. For a custom judge port, set `LEGAL_JUDGE_PORT` in the app terminal to match the judge launcher's `-Port`.
-
-Choose **Open example judgment** or upload your own judgment. **Brief** shows the extracts, **Parsed details** checks outcomes, money and deadlines, and **LLM review → Run local judge** compares sampled extracts with the source. Click a quotation to read its original page. The ZIP includes the judge findings alongside the machine brief and any saved reviewer edits.
-
-The local Qwen2.5-1.5B-Instruct model checks the last decision extract and the first extract in each other populated section. It reads nearby source text and the end of the last nonblank page. The model chooses a numbered source sentence. The app retrieves the quotation from the page offsets. It withholds support if the quotation omits part of the machine extract and flags decision evidence that appears to report an earlier ruling or a party’s position. A matching quotation can still be interpreted incorrectly. Coverage is shown as a count of extracts. Faculty precision, recall, F1 and ROUGE measurements remain in the [evaluation report](docs/faculty_metrics_report.md).
-
-Run `python scripts/demo_local_judge.py` with the judge server running to demonstrate four fictional controls. The [live test record](docs/local_judge_validation.md) includes the observed verdicts and failures.
-
-## Start here for the faculty presentation
-
-Read the [faculty walkthrough and viva questions](docs/faculty_walkthrough.md), then open the notebooks in order:
-
-**For precision, recall and F1:** use the [faculty metrics report](docs/faculty_metrics_report.md). It includes all six summary conditions and the recorded role-classification results. Rebuild it with `python scripts/build_faculty_metrics_report.py`. Demonstrate the new checks with `python scripts/demo_summary_checks.py` (invented data; no model download or API key).
-
-| Notebook | What you explain | Open |
-|---|---|---|
-| [01_data_preprocessing](notebooks/01_data_preprocessing.ipynb) | Datasets, sentence roles, annotation audit, split leakage | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/01_data_preprocessing.ipynb) |
-| [02_model_training](notebooks/02_model_training.ipynb) | TF-IDF, InLegalBERT, BiLSTM/CRF and weakly supervised selectors | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/02_model_training.ipynb) |
-| [03_model_evaluation](notebooks/03_model_evaluation.ipynb) | Recorded comparisons, macro F1, ROUGE and error analysis | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/03_model_evaluation.ipynb) |
-| [04_final_pipeline](notebooks/04_final_pipeline.ipynb) | New document → source evidence → structured brief → review | [Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/04_final_pipeline.ipynb) |
-
-Each notebook has one setup cell. `%%project` runs ordinary Python in a persistent isolated kernel, keeping legacy Hugging Face dependencies out of Colab's base environment. All five default paths were executed locally through this mechanism; a fresh hosted Colab installation and full retraining were not run during consolidation. The first hosted setup can take several minutes.
-
-## Current summarization measurement
-
-The upgraded **4.7 pipeline** was evaluated against the previous pipeline and a simple lead baseline on the **same 100 reserved IN-Abs judgments**, after development on 40 separate cases. This sample is from unused training-pool pairs, with known selector train/dev IDs and exact source duplicates excluded.
-
-| Method (800-word target) | ROUGE-1 | ROUGE-2 | ROUGE-L | Empty decisions |
-|---|---:|---:|---:|---:|
-| Previous 4.6 pipeline | 41.00 | 19.98 | 21.98 | 45 |
-| Opening-sentence baseline | 50.47 | 25.01 | 24.81 | N/A |
-| Upgraded 4.7 pipeline | 56.67 | 33.62 | 30.23 | 13 |
-
-Upgraded ROUGE-L: **30.23** (95% case-bootstrap interval **28.57–31.96**). Paired gain over 4.6: **8.25 points** (95% interval **6.40–10.09**). Paired gain over lead: **5.42 points** (95% interval **3.98–6.95**).
-
-These are **reference-overlap scores, not percentages of legally correct summaries**. The weights were not retrained. Outputs averaged **782.6 words**, versus **306.4** before; 0/100 exceeded the soft 800-word target. All 100 upgraded summaries passed source-span checks. Empty decisions improved from 45 to 13, but recovered decisions still require attribution review.
-
-The same-corpus sample does not establish external-court, OCR or human legal accuracy. One synthetic-test quotation safety fix was made before inspecting the reserved metrics; both freezes and the amendment are preserved. [Protocol, 400-word comparison, limitations and explanation](docs/coverage_upgrade.md) · [Full results](evaluation/coverage_upgrade_reserved.json) · [Per-case scores](evaluation/coverage_upgrade_per_case.csv).
-
-The earlier **20.94 ROUGE-L**, versus lead **24.13**, remains the recorded 4.6 result on the **different official 100-case test set**. Do not compare that old number directly with this new sample. [Preserved historical benchmark](docs/current_summary_benchmark.md).
-
-## What the recorded experiments show
-
-| Experiment | Split | Macro F1 | Weighted F1 |
-|---|---|---:|---:|
-| TF-IDF + logistic regression | DEV | .3921 | .4806 |
-| Stage 1 word BiLSTM | DEV | .4135 | .5082 |
-| Target-only InLegalBERT, 256 tokens | DEV | .5166 | .6704 |
-| Context-aware InLegalBERT | DEV | .6149 | .7569 |
-| Frozen encoder + document BiLSTM | DEV | .6541 | .8237 |
-| Frozen encoder + document BiLSTM + CRF | DEV | .6516 | .8239 |
-
-The best recorded role-classifier DEV accuracy is **83.12%**, with macro F1 **65.41%**. This measures sentence-role classification, not whole-summary correctness. These are saved experiment results, not fresh reruns. [Full role table](evaluation/role_results.csv).
-
-![Recorded development macro F1 across role-classification experiments](docs/images/recorded_results_1.png)
-
-The earlier Stage 3.6 official test evaluated six methods on 100 IN-Abs cases, using 120 sampled candidates and a 400-word budget. The TF-IDF-teacher no-role selector recorded ROUGE-1/2/L F1 of **.5202 / .3177 / .3073**; the greedy-teacher role-aware selector recorded **.5188 / .3168 / .3096**. No single condition wins every metric. [All methods](evaluation/evaluation_results.csv), [recorded provenance](evaluation/recorded/provenance.json).
-
-![Recorded summary-overlap scores on 100 official test cases](docs/images/recorded_results_2.png)
-
-The current app uses full-document windows and structured evidence rules, so those older ROUGE scores do not measure its current performance. Three previously inspected cases and four additional source-reviewed judgments have separate decision-coverage reports; all are now development cases. No general human legal-accuracy percentage is claimed.
-
-## Run locally
-
-Python 3.11 is the locally tested version. Create an isolated environment:
-
-```bash
+```sh
 python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements-app.txt -r requirements-training.txt
-python -m pip check
+```
+
+On Windows PowerShell, run `.\.venv\Scripts\Activate.ps1`. On Linux, run `source .venv/bin/activate`. Then install the app and download the trained checkpoints.
+
+```sh
+python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements-app.txt
 python scripts/download_models.py
 python src/stage44_app.py
 ```
 
-On Windows, after setup you can also run `powershell -ExecutionPolicy Bypass -File .\Start-App.ps1`. The launcher checks model paths and reuses this project's existing local environment when available.
+Open the [local app](http://127.0.0.1:7861/) and choose **Open example judgment** to try it. The downloader verifies the encoder and selector bundle against their release checksums. Searchable PDFs and UTF-8 text files work directly. For scanned PDFs, install Tesseract and enable OCR. [Model files and provenance](models/README.md)
 
-Open **http://127.0.0.1:7861** on the same computer. Keep the terminal running. The app loads `models/encoder` and `models/stage4_english_model_bundle.zip` by default; alternatively set `LEGAL_ENCODER_DIR` and `LEGAL_MODEL_BUNDLE`. Install Tesseract separately if you need OCR. Use native-text mode for searchable PDFs.
+## How it works
 
-Model weights are provided as versioned GitHub Release assets with SHA-256 verification, rather than committed into Git history. The existing trained weights are unchanged. See [model provenance](models/README.md).
+1. **Extract the text.** The pipeline splits the judgment into sentences and keeps the page and character offsets for each extract.
+2. **Score the sentences.** InLegalBERT encodes each sentence in context. A document-level BiLSTM predicts rhetorical roles such as facts, arguments and rulings. A trained selector scores sentences across overlapping windows so it can reach orders near the end of a long judgment.
+3. **Build and review the brief.** The pipeline groups selected passages into the four sections and checks their source spans. In **Parsed details**, you can compare outcomes, rupee amounts and deadlines with their source passages and inspect possible omissions. [Architecture](docs/architecture.md) · [Parsing rules](docs/summary_correctness_checks.md)
 
-For notebook execution in an already prepared environment, set `PROJECT_PYTHON` to that environment's Python. Otherwise notebook setup creates its own environment. The Colab path uses Torch 2.8.0/cu128; local checks used Torch 2.14.1+cpu. Numerical equivalence across runtimes has not been established.
+### Optional local LLM judge
 
-## Data and reproduction
+On Windows x64, run `.\Start-Judge.ps1 -Install` in a second PowerShell window. The first run downloads about 1.15 GB for Qwen2.5-1.5B-Instruct and llama.cpp. On later runs, use `.\Start-Judge.ps1`. Both the app and the judge process documents locally.
 
-Follow [data/README.md](data/README.md) to obtain the original datasets. The public repository includes downloaders, access instructions, checksums, annotation policy and fixed split IDs. It does not mirror the gated corpus or publish private uploads. `HF_TOKEN` is only needed for authorized role-dataset access, never for the app or the synthetic demo.
+In **LLM review**, select **Run local judge**. It checks the last decision extract and the first extract in each other populated section, up to four extracts in total. It returns *supported*, *contradicted* or *insufficient evidence*. Open the cited page to check its interpretation. In a controlled example, it caught a changed amount and deadline but missed a wrong court outcome. [Judge validation and examples](docs/local_judge_validation.md)
 
-Set `DEMO=False` in Notebook 01 to prepare official data. Notebook 02 defaults to `RUN_TRAINING=False`; opt in to long GPU training when ready. Newly trained encoder/head/selector outputs remain research experiments until re-evaluated and packaged with matching provenance. Do not combine a new encoder with the old selector bundle. Archived source exports preserve the original experiments for comparison; the concise workflow does not claim a fresh numerical reproduction.
+## Evaluation
 
-```text
-notebooks/    four main notebooks + optional detailed Stage 1 ML notebook
-src/          audited pipeline, readable training entrypoints, review app
-tests/        inference, app, CRF and teaching-workflow checks
-data/         dataset instructions, source URLs, fixed train/dev IDs
-models/       model provenance and release checksums/download links
-evaluation/   recorded metrics, manifests and current failure review
-examples/     invented judgment and a sample evidence-only summary
-docs/         architecture, methodology, faculty guide, validation
-research/     original notebook code exports for provenance (not the main workflow)
-scripts/      dataset/model downloaders, notebook builder and validation
-```
+### Summarization
 
-## Validate
+The 4.7 pipeline was evaluated on **100 reserved IN-Abs judgments** with an **800-word target**. Precision measures how much of the generated wording overlaps the reference summary. Recall measures how much of the reference wording the generated summary covers. F1 combines the two. Each score is computed per judgment and then averaged, on a 0–100 scale.
 
-```bash
+| Reference-overlap metric | Precision | Recall | F1 |
+| --- | ---: | ---: | ---: |
+| ROUGE-1 (single words) | 53.54 | 69.93 | 56.67 |
+| ROUGE-2 (word pairs) | 31.72 | 41.88 | 33.62 |
+| ROUGE-L (longest common subsequence) | 28.30 | 38.01 | 30.23 |
+
+On the same judgments, the opening-sentence baseline scored **24.81 ROUGE-L F1** and the previous pipeline scored **21.98**. The current pipeline's **30.23** has a 95% case-bootstrap interval of **28.57–31.96**. All 100 briefs passed the source-span checks, but 13 had an empty decision section. A passage can be copied exactly and still describe the wrong court's ruling. Whole-summary legal correctness remains unmeasured. [Per-case results](evaluation/coverage_upgrade_per_case.csv) · [Evaluation protocol and limitations](docs/coverage_upgrade.md)
+
+### Sentence-role classification
+
+This experiment measures how well each model assigns one of 13 rhetorical roles to a sentence on the OpenNyAI development split. Macro F1 gives each role equal weight. Weighted F1 gives more weight to roles with more examples.
+
+| Model | Accuracy (%) | Macro F1 (%) | Weighted F1 (%) |
+| --- | ---: | ---: | ---: |
+| TF-IDF + logistic regression | 46.61 | 39.21 | 48.06 |
+| Word BiLSTM | 50.05 | 41.35 | 50.82 |
+| Context-aware InLegalBERT | 76.31 | 61.49 | 75.69 |
+| InLegalBERT + document BiLSTM | 83.12 | 65.41 | 82.37 |
+
+The saved classification results contain accuracy and F1. Computing per-role precision and recall requires the predicted and gold sentence labels. [All role-classification experiments](evaluation/role_results.csv) · [Detailed metrics report](docs/faculty_metrics_report.md)
+
+## Data and notebooks
+
+OpenNyAI InRhetoricalRoles supplies sentence labels for role classification. IN-Abs supplies judgment–summary pairs for selector development and evaluation. Dataset access instructions, checksums and split IDs are in the [data guide](data/README.md).
+
+| Notebook | Contents |
+| --- | --- |
+| [00 · Classical ML and word BiLSTM](notebooks/00_classical_ml_and_word_bilstm.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/00_classical_ml_and_word_bilstm.ipynb)) | TF-IDF, KNN, logistic regression, SVM and a word-level neural baseline |
+| [01 · Data preprocessing](notebooks/01_data_preprocessing.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/01_data_preprocessing.ipynb)) | Annotation handling, document splits and leakage checks |
+| [02 · Model training](notebooks/02_model_training.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/02_model_training.ipynb)) | InLegalBERT, document-level role prediction and sentence selection |
+| [03 · Model evaluation](notebooks/03_model_evaluation.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/03_model_evaluation.ipynb)) | Classification metrics, reference-summary comparisons and error analysis |
+| [04 · Final pipeline](notebooks/04_final_pipeline.ipynb) ([Colab](https://colab.research.google.com/github/Mananfrfr/legal-judgment-summarizer/blob/main/notebooks/04_final_pipeline.ipynb)) | Generate a brief from a new document and inspect its evidence |
+
+## Reproduce the checks
+
+To rebuild the metrics report from the saved evaluation records, run `python scripts/build_faculty_metrics_report.py`. Run the test suite in the activated environment with the following commands.
+
+```sh
 python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -v
-python scripts/validate_notebooks.py
-# Also exercise one synthetic epoch of the optional word BiLSTM:
-python scripts/validate_notebooks.py --word-bilstm-smoke
 ```
 
-**91 automated tests passed** after adding the current-summary evaluation (86 for the decision upgrade; 71 at original consolidation). All five default demonstration notebooks and a one-epoch synthetic word-BiLSTM training check were executed. Full official-data retraining, fresh hosted Colab installation and public app hosting are not claimed. See [validation](docs/validation.md).
-
-## References and license
-
-Original project code and documentation use the MIT License. Dataset, pretrained-model and dependency terms remain separate: see [third-party notices](THIRD_PARTY_NOTICES.md). [Architecture](docs/architecture.md) · [Methodology](docs/methodology.md) · [Source inventory](docs/source_inventory.json).
+[Methodology](docs/methodology.md) · [Faculty walkthrough](docs/faculty_walkthrough.md) · [MIT license](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
