@@ -1,103 +1,1099 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Judgment Review</title>
 <style>
-:root{--ink:#172a2c;--muted:#5a6d6e;--line:#dce5e2;--paper:#fff;--bg:#f3f6f3;--green:#176353;--pale:#e6f2ec;--amber:#8d4b12;--warn:#fff2db;--red:#9c2934}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}button,input,select,textarea{font:inherit}button,a.link{cursor:pointer}button:disabled{opacity:.5;cursor:wait}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #58a08e;outline-offset:3px}header{background:#163b35;color:white;padding:22px 32px;display:flex;justify-content:space-between;align-items:center;gap:20px}header h1{margin:0;font-family:Georgia,serif;font-size:29px;font-weight:500;letter-spacing:-.5px}header p{margin:4px 0 0;color:#bfd4cd;font-size:13px}.brand{display:flex;align-items:center;gap:14px}.seal{border:1px solid #75988a;border-radius:50%;width:42px;height:42px;display:grid;place-items:center;font:22px Georgia}.badge{border:1px solid #71998a;border-radius:30px;padding:6px 12px;font-size:12px;color:#e4f1e8}.layout{display:grid;grid-template-columns:280px minmax(0,1fr);max-width:1800px;margin:auto}.sidebar{padding:26px 22px;border-right:1px solid var(--line);min-height:calc(100vh - 100px)}h2,h3{line-height:1.25}h2{font-size:20px;margin:0 0 12px}h3{font-size:16px;margin:0 0 8px}.eyebrow{text-transform:uppercase;font-size:11px;letter-spacing:1.7px;color:var(--green);font-weight:750;margin-bottom:8px}.muted,small{color:var(--muted)}small{display:block;font-size:12px}label.field{display:block;font-size:13px;font-weight:650;margin:20px 0 8px}select,input[type=number]{width:100%;padding:10px 12px;border:1px solid #bacac3;border-radius:8px;background:white;color:var(--ink)}input[type=file]{width:100%;font-size:12px;margin:14px 0 6px}input::file-selector-button{border:0;border-radius:6px;padding:8px;background:var(--pale);color:var(--green);cursor:pointer;margin-right:7px}.uploadbox{background:#fff;border:1px dashed #97b6a9;border-radius:12px;padding:15px}.primary{background:var(--green);color:white;border:0;padding:12px 16px;border-radius:8px;font-weight:650;width:100%;margin:22px 0 10px}.secondary{background:white;border:1px solid #c5d4cd;border-radius:7px;padding:8px 12px;color:var(--ink)}.subtle{background:transparent;border:0;padding:8px 0;color:var(--muted);font-size:12px;text-decoration:underline}.check{display:flex;align-items:start;gap:8px;font-size:12px;margin-top:18px}.check input{margin-top:5px}.privacy{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;font-size:12px;color:var(--muted)}main{padding:26px 28px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:18px}.toolbar select{max-width:590px}.export{color:var(--green);font-size:13px;font-weight:650;white-space:nowrap}.status{background:white;border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-bottom:20px}.status.error{border-color:#e3a5ab;background:#fff4f4;color:var(--red)}.status.busy{border-left:4px solid var(--green)}.status strong{display:block;font-size:14px}.status p{margin:3px 0;font-size:13px}.progress{height:4px;background:#e4ede8;border-radius:3px;margin-top:10px;overflow:hidden}.progress span{display:block;height:100%;background:var(--green);transition:width .3s}.workspace{display:grid;grid-template-columns:minmax(340px,1fr) minmax(330px,.9fr);gap:22px;align-items:start}.empty{border:1px solid var(--line);border-radius:14px;background:white;padding:45px 34px;max-width:940px;margin:22px auto}.empty h2{font:32px/1.2 Georgia,serif;max-width:520px}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px}.stepnum{display:block;color:var(--green);font:30px Georgia;margin-bottom:8px}.steps p{font-size:13px;margin:6px 0;color:var(--muted)}.card{background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:16px;overflow:hidden}.cardhead{padding:16px 18px;border-bottom:1px solid #edf1ed;display:flex;justify-content:space-between;gap:10px}.cardhead h3{margin:0}.cardbody{padding:16px 18px}.entry{margin:0 0 17px;padding-left:12px;border-left:2px solid #d3e4d9}.entry p{font-size:14px;margin:0 0 5px;line-height:1.65}.evidence{background:var(--pale);border:0;color:var(--green);font-size:11px;border-radius:5px;padding:4px 7px}.flag{font-size:11px;color:var(--amber);background:var(--warn);border-radius:4px;padding:4px 6px;margin:3px;display:inline-block}.warning{background:var(--warn);color:#75410f;padding:12px 15px;font-size:13px;border-radius:8px;margin-bottom:16px}.danger{background:#fff0ef;color:var(--red);border:1px solid #efc3c5}.viewer{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}.sourcecontrols{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.sourcecontrols select{width:auto;max-width:130px}.sourcecontrols label{font-size:12px}.sourceimg{display:block;width:100%;height:auto;border:1px solid var(--line);background:white}.sourceplaceholder{padding:55px 25px;text-align:center;color:var(--muted);font-size:13px}.sourcetext{font-size:13px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;padding:14px;background:#f8faf7}mark{background:#ffeb9c;color:#172a2c}details{margin-top:12px}summary{cursor:pointer;font-size:13px;font-weight:650;color:var(--green)}textarea{width:100%;min-height:125px;resize:vertical;padding:12px;border:1px solid #bacac3;border-radius:7px;font-size:13px;line-height:1.6}textarea.notes{min-height:85px}.reviewlabel{font-size:12px;font-weight:650;display:block;margin:14px 0 6px}.reviewactions{display:flex;align-items:center;gap:12px;margin-top:12px}.reviewactions button{width:auto;margin:0}#saved{font-size:12px;color:var(--green)}.meta{font-size:12px;color:var(--muted);margin-bottom:14px}.hidden,[hidden]{display:none!important}.reviewbar{display:flex;justify-content:space-between;align-items:center;margin:0 0 16px}.rule{font-size:12px;color:var(--muted);margin-bottom:20px}.errors{font-size:13px;color:var(--red)}@media(max-width:1100px){.layout{grid-template-columns:245px minmax(0,1fr)}.workspace{grid-template-columns:1fr}.viewer{position:static;max-height:none}main{padding:22px}.steps{grid-template-columns:1fr}.empty{padding:26px}}@media(max-width:700px){header{padding:18px}.badge{display:none}.layout{display:block}.sidebar{min-height:0;border-right:0;border-bottom:1px solid var(--line)}main{padding:18px}.toolbar{flex-wrap:wrap}.empty h2{font-size:26px}}
-.views{display:flex;gap:4px;background:#e3ebe6;border-radius:10px;padding:4px;margin-bottom:16px;flex-wrap:wrap}.views button{flex:1;color:#35554a;background:transparent;border:0;border-radius:7px;padding:10px 6px;font-weight:650;font-size:13px}.views button[aria-pressed=true]{background:#fff;color:#174d3e;box-shadow:0 1px 4px #153d3020}.reading,.viewer,main{min-width:0}.finding{border-top:1px solid var(--line);padding:14px 0;overflow-wrap:anywhere}.finding h4{margin:0;color:#476052;text-transform:capitalize}.finding.contradicted h4{color:#922d29}.finding.insufficient_evidence h4{color:#795419}.finding p{margin:6px 0}.finding blockquote{margin:10px 0;padding:8px 12px;background:#f4f7f3;border-left:3px solid #96ae9b;font-family:Georgia,serif}.empty{background:linear-gradient(125deg,#fff,#edf4eb);border-top:4px solid #447963}.empty h2,.cardhead h3{font-family:Georgia,serif}.empty .secondary{margin-top:12px}.toolbar select{max-width:100%}.sourceplaceholder{padding:14px}.cardbody>p:first-child{margin-top:0}
+/* ── Design tokens ── */
+:root {
+  --ink: #1a1a1a;
+  --muted: #6b6460;
+  --line: #d5cec7;
+  --paper: #ece6de;
+  --page: #fff;
+  --bg: #e8e0d8;
+  --accent: #762F3D;
+  --accent-pale: #f5e6e9;
+  --accent-bg: rgba(118,47,61,.08);
+  --amber: #8d4b12;
+  --warn: #fff2db;
+  --red: #9c2934;
+  --serif: Georgia, 'Times New Roman', serif;
+  --sans: -apple-system, system-ui, 'Segoe UI', sans-serif;
+}
+
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); }
+button, input, select, textarea { font: inherit; }
+button, a.link { cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+[hidden] { display: none !important; }
+
+/* ── Header ── */
+header {
+  background: #2c1a1f; color: #fff;
+  padding: 0 32px; height: 52px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.seal {
+  border: 1.5px solid #9a7a80; border-radius: 4px;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  font: 18px/1 var(--serif); color: #d4b8be;
+}
+header h1 { margin: 0; font: 500 18px/1 var(--serif); letter-spacing: -.3px; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #c8b0b6; }
+.btn-new-review {
+  background: var(--accent); color: #fff; border: 0;
+  padding: 7px 16px; border-radius: 4px; font-size: 13px; font-weight: 600;
+  display: none;
+}
+.btn-new-review:hover { background: #8a3849; }
+
+/* ── Upload screen ── */
+.upload-screen {
+  max-width: 960px; margin: 0 auto;
+  padding: 60px 40px 80px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
+  align-items: start;
+}
+.upload-left h2 {
+  font: 400 36px/1.15 var(--serif); margin: 0 0 8px; color: var(--ink);
+}
+.upload-left .subtitle {
+  font-size: 15px; color: var(--muted); margin: 0 0 32px;
+}
+.dropzone {
+  border: 1.5px dashed var(--line); border-radius: 8px;
+  padding: 32px 24px; text-align: center;
+  background: var(--page); transition: border-color .15s;
+}
+.dropzone.dragover { border-color: var(--accent); background: var(--accent-pale); }
+.dropzone .arrow { font-size: 24px; color: var(--muted); margin-bottom: 10px; display: block; }
+.dropzone p { margin: 0 0 14px; font-size: 15px; color: var(--ink); }
+.btn-choose {
+  background: var(--accent); color: #fff; border: 0;
+  padding: 10px 28px; border-radius: 4px; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+.btn-choose:hover { background: #8a3849; }
+.dropzone small { display: block; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.dropzone .file-list { text-align: left; font-size: 13px; margin-top: 12px; color: var(--ink); }
+.dropzone .file-list span { display: block; padding: 2px 0; }
+#files { display: none; }
+
+/* ── Settings row ── */
+.settings-row {
+  border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px;
+}
+.settings-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: 0; padding: 0; width: 100%;
+  font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer;
+  text-align: left;
+}
+.settings-toggle .summary { font-weight: 400; color: var(--muted); font-size: 13px; }
+.settings-toggle .chevron { font-size: 12px; color: var(--muted); transition: transform .2s; }
+.settings-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+.settings-body { display: none; padding-top: 16px; }
+.settings-body.open { display: block; }
+.settings-body label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--ink); }
+.settings-body select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--page); color: var(--ink); font-size: 13px;
+  margin-bottom: 14px;
+}
+.settings-body .check {
+  display: flex; align-items: start; gap: 8px; font-size: 12px; color: var(--muted);
+}
+.settings-body .check input { margin-top: 3px; }
+
+.btn-create {
+  display: block; width: 100%; margin-top: 24px;
+  padding: 14px; border: 1.5px solid var(--line); border-radius: 4px;
+  background: var(--page); color: var(--ink);
+  font-size: 15px; font-weight: 500; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.btn-create:not(:disabled):hover { border-color: var(--accent); }
+.btn-create:disabled { opacity: .4; cursor: default; }
+.upload-privacy {
+  margin-top: 16px; font-size: 12px; color: var(--muted);
+}
+
+/* ── Example preview (right column) ── */
+.example-preview {
+  padding-top: 4px;
+}
+.example-preview .eyebrow {
+  font-size: 12px; color: var(--muted); margin: 0 0 4px; letter-spacing: .3px;
+}
+.example-preview .case-title {
+  font: italic 400 28px/1.2 var(--serif); margin: 0 0 24px; color: var(--ink);
+}
+.example-excerpt {
+  background: var(--page); border-radius: 6px; padding: 20px 22px;
+  margin-bottom: 24px; font: 15px/1.65 var(--serif); color: #333;
+  border-left: 3px solid var(--accent);
+}
+.example-excerpt .para-num {
+  color: var(--accent); font-weight: 600; margin-right: 8px;
+}
+.example-excerpt mark {
+  background: var(--accent-pale); color: var(--ink);
+  padding: 1px 2px; border-radius: 2px;
+}
+.btn-open-example {
+  display: block; width: fit-content; margin: 0 auto;
+  padding: 11px 32px; border: 1.5px solid var(--ink); border-radius: 4px;
+  background: var(--page); color: var(--ink);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.btn-open-example:hover { background: #f5f0eb; }
+
+/* ── Status bar ── */
+.status-bar {
+  background: var(--page); border-bottom: 1px solid var(--line);
+  padding: 10px 32px; font-size: 13px; color: var(--muted);
+  display: none;
+}
+.status-bar.visible { display: block; }
+.status-bar.error { color: var(--red); background: #fdf4f4; }
+.status-bar.busy { border-left: 3px solid var(--accent); }
+.status-bar strong { color: var(--ink); margin-right: 6px; }
+
+/* ── Review screen ── */
+.review-screen { display: none; }
+.review-screen.visible { display: block; }
+
+.review-header {
+  padding: 20px 32px 16px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: start; gap: 20px;
+  background: var(--paper);
+}
+.review-header-left { flex: 1; min-width: 0; }
+.review-header .eyebrow { font-size: 12px; color: var(--muted); margin: 0 0 2px; }
+.review-header .case-title {
+  font: italic 400 28px/1.2 var(--serif); margin: 0 0 4px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.review-header .case-meta { font-size: 12px; color: var(--muted); margin: 0; }
+.review-header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding-top: 8px; }
+.btn-export {
+  padding: 9px 18px; border: 1.5px solid var(--ink); border-radius: 4px;
+  background: var(--page); color: var(--ink);
+  font-size: 13px; font-weight: 500; text-decoration: none; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-export:hover { background: #f5f0eb; }
+#documents {
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--page); color: var(--ink); font-size: 13px;
+  max-width: 220px;
+}
+
+/* ── Review layout ── */
+.review-layout {
+  display: grid; grid-template-columns: minmax(320px,1fr) minmax(360px,1.1fr);
+  max-width: 1400px; margin: 0 auto; min-height: calc(100vh - 130px);
+}
+
+/* ── Brief panel (left) ── */
+.brief-panel {
+  padding: 24px 28px; border-right: 1px solid var(--line);
+  overflow-y: auto; max-height: calc(100vh - 130px);
+}
+.brief-panel h3 {
+  font: 600 15px/1.3 var(--sans); margin: 0 0 4px;
+  text-transform: uppercase; letter-spacing: .4px; font-size: 12px; color: var(--muted);
+}
+.brief-heading {
+  font: 700 17px/1.3 var(--serif); margin: 28px 0 10px; color: var(--ink);
+}
+.brief-heading:first-of-type { margin-top: 0; }
+.brief-section { margin-bottom: 6px; }
+.brief-entry {
+  margin-bottom: 16px; font: 15px/1.65 var(--serif); color: #2a2a2a;
+}
+.brief-entry p { margin: 0 0 6px; }
+
+/* ── Citation buttons ── */
+.citation-btn {
+  display: inline-block; background: none; border: 0;
+  font-size: 12px; color: var(--muted); padding: 2px 0;
+  cursor: pointer; text-decoration: none;
+  transition: color .12s;
+}
+.citation-btn::before { content: '¶ '; }
+.citation-btn:hover { color: var(--accent); }
+.citation-btn.active {
+  color: var(--page); background: var(--accent); border-radius: 3px;
+  padding: 2px 7px;
+}
+.citation-btn.active::before { content: '¶ '; }
+
+/* ── Views tabs ── */
+.view-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+.view-tabs button {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--muted);
+  cursor: pointer; transition: color .12s, border-color .12s;
+}
+.view-tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.view-tabs button:hover { color: var(--ink); }
+
+/* ── Notices and warnings ── */
+.notice { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.warning { background: var(--warn); color: #75410f; padding: 10px 14px; font-size: 13px; border-radius: 4px; margin-bottom: 14px; }
+.danger { background: #fff0ef; color: var(--red); border: 1px solid #efc3c5; }
+.errors { font-size: 13px; color: var(--red); margin-bottom: 8px; }
+
+/* ── Source panel (right) ── */
+.source-panel {
+  background: #f7f4f0; padding: 24px 28px;
+  overflow-y: auto; max-height: calc(100vh - 130px);
+  position: sticky; top: 0;
+}
+.source-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 12px;
+}
+.source-header h3 {
+  font: 600 15px/1.3 var(--sans); margin: 0;
+  text-transform: uppercase; letter-spacing: .4px; font-size: 12px; color: var(--muted);
+}
+.page-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.page-nav button {
+  background: none; border: 0; font-size: 16px; color: var(--muted);
+  cursor: pointer; padding: 2px 6px; line-height: 1;
+}
+.page-nav button:hover { color: var(--ink); }
+.page-nav button:disabled { opacity: .3; cursor: default; }
+
+.source-body {
+  background: var(--page); border-radius: 6px;
+  padding: 28px 24px; font: 15px/1.75 var(--serif); color: #2a2a2a;
+  min-height: 200px;
+  overflow-y: auto; max-height: calc(100vh - 240px);
+}
+.source-body mark {
+  background: var(--accent-pale); color: var(--ink);
+  padding: 1px 2px; border-radius: 2px;
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
+/* Rose highlight with oxblood left rule on the matched passage */
+.source-body .highlighted-passage {
+  border-left: 3px solid var(--accent);
+  padding-left: 14px; margin-left: -17px;
+  background: var(--accent-pale); border-radius: 0 4px 4px 0;
+  display: block; padding-top: 4px; padding-bottom: 4px;
+}
+.source-img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); background: white; border-radius: 4px;
+  margin-bottom: 16px;
+}
+.source-placeholder {
+  padding: 32px; text-align: center; color: var(--muted); font-size: 13px;
+}
+
+/* ── Editor / reviewer draft ── */
+.editor-card { margin-top: 20px; }
+.editor-card .warning { margin-bottom: 12px; }
+textarea {
+  width: 100%; min-height: 100px; resize: vertical;
+  padding: 10px; border: 1px solid var(--line); border-radius: 4px;
+  font-size: 13px; line-height: 1.6; background: var(--page);
+}
+textarea.notes { min-height: 70px; }
+.reviewlabel { font-size: 12px; font-weight: 600; display: block; margin: 12px 0 5px; color: var(--ink); }
+.reviewactions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.reviewactions button { width: auto; }
+.btn-save {
+  background: var(--accent); color: #fff; border: 0;
+  padding: 10px 20px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-save:hover { background: #8a3849; }
+#saved { font-size: 12px; color: var(--accent); }
+
+/* ── Detail checks ── */
+.detail-checks { margin-bottom: 16px; }
+.detail-checks .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.check-entry { margin-bottom: 10px; padding-left: 10px; border-left: 2px solid var(--line); font-size: 13px; }
+.check-entry p { margin: 2px 0; }
+
+/* ── Judge panel ── */
+.judge-panel { margin-bottom: 16px; }
+.judge-panel p { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.btn-judge {
+  background: var(--page); border: 1px solid var(--line); border-radius: 4px;
+  padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--ink);
+}
+.btn-judge:hover { border-color: var(--accent); }
+.finding { border-top: 1px solid var(--line); padding: 12px 0; overflow-wrap: anywhere; }
+.finding h4 { margin: 0; font-size: 13px; color: var(--muted); text-transform: capitalize; }
+.finding.contradicted h4 { color: var(--red); }
+.finding.insufficient_evidence h4 { color: var(--amber); }
+.finding p { margin: 4px 0; font-size: 14px; }
+.finding blockquote {
+  margin: 8px 0; padding: 8px 12px; background: #f7f4f0;
+  border-left: 3px solid var(--line); font: 14px/1.6 var(--serif);
+}
+
+/* ── Audit card ── */
+.audit-toggle {
+  background: none; border: 0; font-size: 13px; font-weight: 600;
+  color: var(--muted); cursor: pointer; padding: 0; margin-top: 16px;
+}
+.audit-toggle:hover { color: var(--ink); }
+.audit-body { display: none; margin-top: 10px; }
+.audit-body.open { display: block; }
+.flag {
+  font-size: 11px; color: var(--amber); background: var(--warn);
+  border-radius: 3px; padding: 3px 6px; margin: 2px; display: inline-block;
+}
+
+/* ── Edit toggle ── */
+.btn-edit-toggle {
+  background: none; border: 1px solid var(--line); border-radius: 4px;
+  padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.btn-edit-toggle:hover { border-color: var(--accent); color: var(--ink); }
+
+/* ── Mobile toggle ── */
+.mobile-panel-toggle {
+  display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: #fff; border: 0;
+  padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,.2);
+  cursor: pointer;
+}
+
+.btn-clear {
+  background: none; border: 0; padding: 0;
+  color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer;
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+  .upload-screen { grid-template-columns: 1fr; gap: 40px; padding: 40px 24px 60px; }
+  .upload-left h2 { font-size: 28px; }
+  .example-preview .case-title { font-size: 22px; }
+  .review-layout { grid-template-columns: 1fr; }
+  .brief-panel { max-height: none; border-right: 0; }
+  .source-panel { position: static; max-height: none; display: none; }
+  .source-panel.mobile-visible { display: block; }
+  .brief-panel.mobile-hidden { display: none; }
+  .mobile-panel-toggle { display: block; }
+  .review-header { flex-direction: column; gap: 10px; padding: 16px 24px; }
+  .review-header .case-title { white-space: normal; font-size: 22px; }
+  header { padding: 0 20px; }
+}
+@media (max-width: 540px) {
+  .upload-screen { padding: 28px 16px 40px; }
+  .upload-left h2 { font-size: 24px; }
+  .brief-panel, .source-panel { padding: 16px; }
+  .source-body { padding: 16px; }
+  header h1 { font-size: 16px; }
+}
 </style></head><body>
-<header><div class="brand"><div class="seal" aria-hidden="true">§</div><div><h1>Judgment Review</h1><p>Evidence-linked briefs for Indian judgments</p></div></div><span class="badge">Local review workspace</span></header>
-<div class="layout"><aside class="sidebar"><div class="eyebrow">Your workspace</div><h2>Start with a judgment</h2><p class="muted" style="font-size:13px">Create an evidence-linked brief from an English judgment.</p>
-<form id="uploadForm"><div class="uploadbox"><strong style="font-size:13px">Add your documents</strong><input id="files" type="file" multiple accept=".pdf,.txt" required aria-label="Choose judgments"><small>PDF or UTF-8 TXT · up to 10 files<br>50 MB each · 100 MB total · 200 pages each</small></div>
-<label class="field" for="budget">Target summary length</label><select id="budget"><option value="500">500 words · Short</option><option value="800" selected>800 words · Standard</option><option value="1200">1,200 words · Detailed</option><option value="2000">2,000 words · Extended</option></select><small style="margin-top:6px">Complete directions may exceed the target.</small>
-<label class="field" for="ocr">Text extraction</label><select id="ocr"><option value="auto">Automatic · OCR when needed</option><option value="off">Native PDF text only</option><option value="force">OCR every page</option></select>
-<label class="check"><input id="evidenceOnly" type="checkbox"><span>Use extraction without the trained model<br><small>Explicit fallback; results will be labeled.</small></span></label>
-<button id="create" type="submit" class="primary">Create brief</button></form><button id="clear" class="subtle">Clear my files and results</button>
-<div class="privacy"><strong>Private by default</strong><p>Processing stays on this server. No external generation API is used. Completed workspaces expire after one hour; export anything you want to keep.</p><p>Closing this tab alone does not delete files. Use “Clear” for immediate cleanup after processing.</p></div></aside>
-<main><div id="status" class="status" role="status" aria-live="polite"><strong>Ready when you are</strong><p>Your sources remain visible beside every brief.</p></div>
-<div id="empty" class="empty"><h2>Review a judgment</h2><p class="muted">Bring a PDF or text judgment, or open the fictional example to try the full review.</p><button id="tryDemo" class="secondary">Open example judgment</button></div>
-<section id="results" hidden><div class="toolbar"><select id="documents" aria-label="Choose processed document"></select><a id="export" class="export" href="#">Download review ZIP ↗</a></div><div id="errors" class="errors"></div><div class="warning">Draft extracts: the model can confuse an earlier ruling with the current decision. Verify the outcome, exceptions and deadlines against the final pages.</div><div id="notice"></div><div class="reviewbar"><div id="meta" class="meta"></div><button id="editToggle" class="secondary">Edit reviewer draft</button></div><p class="rule">Source matches verify copying, not legal correctness. Missing sections and uncertain attribution need review.</p>
-<div class="workspace"><div class="reading"><nav class="views" aria-label="Review views"><button data-view="brief" aria-pressed="true">Brief</button><button data-view="checks" aria-pressed="false">Parsed details</button><button data-view="judge" aria-pressed="false">LLM review</button></nav>
-<div id="judgePanel" class="card" hidden><div class="cardhead"><h3>LLM evidence review</h3></div><div class="cardbody"><p>Check one extract per available section against its linked passage and the closing page. The judge reviews the original machine brief. It can miss errors and omitted directions.</p><button id="runJudge" class="secondary">Run local judge</button><p id="judgeStatus" class="meta" role="status" aria-live="polite"></p><div id="findings"></div></div></div>
-<div id="detailChecks" hidden></div><div id="sections"></div><div id="editor" class="card" hidden><div class="cardhead"><h3>Your reviewer draft</h3></div><div class="cardbody"><div class="warning">Edits are saved separately. They do not inherit the original extracts’ source-verification status.</div><div id="editFields"></div><label class="reviewlabel" for="notes">Reviewer notes</label><textarea id="notes" class="notes" placeholder="Record omissions, attribution issues, and checks still needed."></textarea><div class="reviewactions"><button id="save" class="primary">Save draft</button><span id="saved" role="status"></span></div></div></div><details class="card" id="auditCard"><summary class="cardbody">Review flags and extraction notes</summary><div id="audit" class="cardbody"></div></details></div>
-<aside class="card viewer"><div class="cardhead"><h3>Source evidence</h3><span id="pageLabel" class="muted" style="font-size:12px"></span></div><div class="cardbody"><div class="sourcecontrols"><label for="pages">Page</label><select id="pages" aria-label="Source page"></select><button id="previous" class="secondary" aria-label="Previous page">←</button><button id="next" class="secondary" aria-label="Next page">→</button><button id="finalPages" class="secondary">Review final pages</button></div><p id="evidenceLabel" class="meta" style="margin-top:12px">Select a source reference in the brief.</p><img id="pageImage" class="sourceimg" alt="Original judgment page" hidden><div id="noImage" class="sourceplaceholder" hidden>Text document · see the source text below</div><details open><summary>Extracted source text · selected spans highlighted</summary><div id="sourceText" class="sourcetext"></div></details></div></aside></div></section>
-</main></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="brand">
+    <div class="seal" aria-hidden="true">§</div>
+    <h1>Judgment Review</h1>
+  </div>
+  <div class="header-right">
+    <span>Local workspace</span>
+    <button id="newReview" class="btn-new-review" onclick="showUpload()">+ New review</button>
+  </div>
+</header>
+
+<!-- ── STATUS BAR ── -->
+<div id="status" class="status-bar" role="status" aria-live="polite"></div>
+
+<!-- ── UPLOAD SCREEN ── -->
+<div id="uploadScreen" class="upload-screen">
+  <div class="upload-left">
+    <h2>Review a judgment</h2>
+    <p class="subtitle">Create a brief you can trace back to the source.</p>
+
+    <form id="uploadForm">
+      <div class="dropzone" id="dropzone">
+        <span class="arrow">↑</span>
+        <p>Drop a PDF or text file</p>
+        <button type="button" class="btn-choose" onclick="document.getElementById('files').click()">Choose files</button>
+        <input id="files" type="file" multiple accept=".pdf,.txt" required aria-label="Choose judgments">
+        <small>Up to 10 files · 50 MB each</small>
+        <div id="fileList" class="file-list" hidden></div>
+      </div>
+
+      <div class="settings-row">
+        <button type="button" class="settings-toggle" id="settingsToggle" aria-expanded="false" onclick="toggleSettings()">
+          <span><strong>Brief settings</strong> <span class="summary" id="settingsSummary">800 words · Automatic extraction</span></span>
+          <span class="chevron">›</span>
+        </button>
+        <div class="settings-body" id="settingsBody">
+          <label for="budget">Target length</label>
+          <select id="budget" onchange="updateSettingsSummary()">
+            <option value="500">500 words · Short</option>
+            <option value="800" selected>800 words · Standard</option>
+            <option value="1200">1,200 words · Detailed</option>
+            <option value="2000">2,000 words · Extended</option>
+          </select>
+          <label for="ocr">Text extraction</label>
+          <select id="ocr" onchange="updateSettingsSummary()">
+            <option value="auto">Automatic · OCR when needed</option>
+            <option value="off">Native PDF text only</option>
+            <option value="force">OCR every page</option>
+          </select>
+          <label class="check"><input id="evidenceOnly" type="checkbox" onchange="updateSettingsSummary()"><span>Extraction-only mode (no trained model)</span></label>
+        </div>
+      </div>
+
+      <button id="create" type="submit" class="btn-create" disabled>Create brief</button>
+    </form>
+    <p class="upload-privacy">Files are processed on this server.</p>
+    <button id="clear" class="btn-clear" hidden>Clear workspace</button>
+  </div>
+
+  <div class="example-preview">
+    <p class="eyebrow">Example judgment</p>
+    <h3 class="case-title">Mehra v. State Licensing Board</h3>
+    <div class="example-excerpt">
+      <span class="para-num">14.</span> The Board did not supply the material on which the notice relied. Without access to that material, <mark>the petitioner could not meaningfully answer the allegations.</mark>
+    </div>
+    <button id="tryDemo" class="btn-open-example">Open example judgment</button>
+  </div>
+</div>
+
+<!-- ── REVIEW SCREEN ── -->
+<div id="reviewScreen" class="review-screen">
+  <div class="review-header">
+    <div class="review-header-left">
+      <p class="eyebrow" id="reviewEyebrow"></p>
+      <h2 class="case-title" id="caseTitle"></h2>
+      <p class="case-meta" id="caseMeta"></p>
+    </div>
+    <div class="review-header-right">
+      <select id="documents" aria-label="Choose processed document" hidden></select>
+      <a id="export" class="btn-export" href="#">Export brief</a>
+    </div>
+  </div>
+
+  <div class="review-layout">
+    <!-- Brief panel -->
+    <div class="brief-panel" id="briefPanel">
+      <nav class="view-tabs" aria-label="Review views">
+        <button data-view="brief" aria-pressed="true">Brief</button>
+        <button data-view="checks" aria-pressed="false">Parsed details</button>
+        <button data-view="judge" aria-pressed="false">LLM review</button>
+      </nav>
+
+      <div id="errors" class="errors"></div>
+      <div id="notice"></div>
+
+      <!-- Brief view -->
+      <div id="sections"></div>
+
+      <!-- Editor -->
+      <div id="editor" class="editor-card" hidden>
+        <div class="warning">Edits are saved separately. They do not inherit the original extracts' source-verification status.</div>
+        <div id="editFields"></div>
+        <label class="reviewlabel" for="notes">Reviewer notes</label>
+        <textarea id="notes" class="notes" placeholder="Record omissions, attribution issues, and checks still needed."></textarea>
+        <div class="reviewactions">
+          <button id="save" class="btn-save">Save draft</button>
+          <span id="saved" role="status"></span>
+        </div>
+      </div>
+      <button id="editToggle" class="btn-edit-toggle" hidden>Edit reviewer draft</button>
+
+      <!-- Audit -->
+      <button id="auditToggle" class="audit-toggle" hidden onclick="toggleAudit()">Review flags and extraction notes ›</button>
+      <div id="audit" class="audit-body"></div>
+
+      <!-- Detail checks view -->
+      <div id="detailChecks" class="detail-checks" hidden></div>
+
+      <!-- Judge view -->
+      <div id="judgePanel" class="judge-panel" hidden>
+        <p>Check one extract per available section against its linked passage and the closing page. The judge reviews the original machine brief.</p>
+        <button id="runJudge" class="btn-judge">Run local judge</button>
+        <p id="judgeStatus" class="notice" role="status" aria-live="polite"></p>
+        <div id="findings"></div>
+      </div>
+    </div>
+
+    <!-- Source panel -->
+    <div class="source-panel" id="sourcePanel">
+      <div class="source-header">
+        <h3>Source judgment</h3>
+        <div class="page-nav">
+          <button id="previous" aria-label="Previous page">‹</button>
+          <span id="pageLabel"></span>
+          <button id="next" aria-label="Next page">›</button>
+        </div>
+      </div>
+      <img id="pageImage" class="source-img" alt="Original judgment page" hidden>
+      <div id="noImage" class="source-placeholder" hidden>Text document · source text below</div>
+      <div id="sourceText" class="source-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile toggle -->
+<button id="mobileToggle" class="mobile-panel-toggle" hidden onclick="toggleMobilePanel()">View source</button>
+
 <script>
-const $=id=>document.getElementById(id);let job=null,docIndex=null,doc=null,selected=null,timer=null,dirty=false,active=false;
-const titles={background:'Background & procedural history',issue:'Issues / dispute context',reasoning:'Reasoning · source passages',decision:'Decision & operative directions'};
-function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
-function status(title,detail='',kind=''){const box=$('status');box.className='status '+kind;box.replaceChildren(element('strong',title),element('p',detail))}
-async function api(url,options={}){options.headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),'X-Review-Request':'1',...options.headers};const r=await fetch(url,options);if(!r.ok){let d;try{d=await r.json()}catch{d={detail:'Request failed'}}throw Error(typeof d.detail==='string'?d.detail:'Please check the inputs and retry.')}return r.json()}
-function base(){return `/api/jobs/${job}/documents/${docIndex}`}
-$('uploadForm').onsubmit=async e=>{e.preventDefault();if(active)return;if(dirty&&!confirm('Discard unsaved reviewer edits?'))return;const files=[...$('files').files];if(files.length>10||files.some(f=>f.size>50000000)||files.reduce((n,f)=>n+f.size,0)>100000000){status('Upload limit exceeded','Use up to 10 files, 50 MB each and 100 MB total.','error');return}active=true;$('create').disabled=true;status('Creating your brief','Long judgments take longer because the full extracted body is scored.','busy');const data=new FormData();for(const f of files)data.append('files',f);data.append('budget',$('budget').value);data.append('ocr',$('ocr').value);data.append('evidence_only',$('evidenceOnly').checked);try{const r=await api('/api/jobs',{method:'POST',body:data});job=r.id;dirty=false;doc=null;$('results').hidden=true;$('empty').hidden=true;poll()}catch(err){active=false;$('create').disabled=false;status('Could not start',err.message,'error')}};
-async function poll(){try{const r=await api(`/api/jobs/${job}`);status(r.message,`${r.completed} of ${r.total} documents processed`,'busy');if(['ready','failed'].includes(r.status)){active=false;$('create').disabled=false;$('errors').replaceChildren(...r.errors.map(e=>element('p',(e.name?e.name+': ':'')+e.message)));if(!r.documents.length){status('No summary was produced',r.errors.map(e=>e.message).join(' '),'error');$('empty').hidden=false;return}$('documents').replaceChildren(...r.documents.map(e=>{const o=element('option',e.name+(e.missing.length?' · INCOMPLETE':''));o.value=e.index;return o}));$('results').hidden=false;$('export').href=`/api/jobs/${job}/export`;await loadDoc(r.documents[0].index);return}timer=setTimeout(poll,1500)}catch(err){active=false;$('create').disabled=false;status('Processing status unavailable',err.message,'error')}}
-async function loadDoc(index){docIndex=Number(index);const url=base();const data=await api(url);if(base()!==url)return;doc=data;selected=null;dirty=false;$('saved').textContent='';$('editor').hidden=true;$('sections').hidden=false;$('editToggle').textContent='Edit reviewer draft';const r=data.result;const missing=r.audit.missing_sections;status(missing.length?'Incomplete brief — review required':'Brief ready for source review',missing.length?'Not reliably identified: '+missing.join(', '):'This is a research assistant. Check attribution, reasoning and all operative conditions.',missing.length?'error':'');$('notice').replaceChildren();if(missing.length)$('notice').append(element('div','Missing sections are not a negative court finding. Consult the source before using this brief.','warning danger'));if(r.model.mode==='evidence_only')$('notice').append(element('div','Extraction-only result: the trained encoder and selector were not used.','warning'));$('meta').textContent=`${r.canonical_pages.length} page${r.canonical_pages.length===1?'':'s'} · ${r.summary_words} words · ${r.model.scored_sentences??0}/${r.total_source_sentences} sentences scored`;renderSections(r);renderDetailChecks(r);$('pages').replaceChildren(...r.canonical_pages.map((_,i)=>{const o=element('option',`Page ${i+1}`);o.value=i+1;return o}));$('audit').replaceChildren(...r.audit.flags.map(f=>element('span',f.replaceAll('_',' '),'flag')),...r.warnings.map(w=>element('p',w)));const omission=r.audit.possible_omitted_directions||[];if(omission.length){$('audit').append(element('h3','Possible omitted directions'));for(const x of omission){const p=element('p',x.sentence);const b=element('button','View source','evidence');b.onclick=()=>showEvidence(x);p.append(document.createElement('br'),b);$('audit').append(p)}}$('editFields').replaceChildren();for(const key of Object.keys(titles)){const label=element('label',titles[key],'reviewlabel');label.htmlFor='edit-'+key;const field=element('textarea');field.id='edit-'+key;field.value=data.review?.sections[key]??r.sections[key].map(x=>x.sentence).join(' ');field.oninput=()=>dirty=true;$('editFields').append(label,field)}$('notes').value=data.review?.notes||'';showPage(1);setView("brief");renderJudge()}
-function renderSections(r){$('sections').replaceChildren();for(const [key,title] of Object.entries(titles)){const card=element('section',undefined,'card');const heading=element('div',undefined,'cardhead');heading.append(element('h3',title));const body=element('div',undefined,'cardbody');if(key==='issue')body.append(element('p',({explicit_source_issue:'Issue wording found in the source; may not cover every issue.',source_dispute_description:'A description of the dispute, not an explicit court-formulated question.',reported_competing_positions:'Reported positions of the parties; not court findings.',procedural_context:'Procedural context only. The controlling legal issue needs review.'})[r.issue_mode]||'Check issue coverage.','meta'));if(!r.sections[key].length)body.append(element('div','Not reliably identified. Consult the judgment.','warning danger'));const blocks=[];for(const e of r.sections[key]){const last=blocks.at(-1);if(key==='reasoning'&&last&&last[0].reasoning_block_id===e.reasoning_block_id)last.push(e);else blocks.push([e])}for(const block of blocks){const row=element('div',undefined,'entry');row.append(element('p',block.map(e=>e.sentence).join(' ')));for(const e of block){const b=element('button',`p. ${e.page}${e.page_end!==e.page?'–'+e.page_end:''} · evidence ${e.id}`,'evidence');b.style.margin='3px';b.onclick=()=>showEvidence(e);row.append(b)}body.append(row)}card.append(heading,body);$('sections').append(card)}}
-function renderDetailChecks(r){
-  const root=$('detailChecks');root.replaceChildren();
-  const checks=r.audit.decision_detail_checks;if(!checks)return;
-  const card=element('section',undefined,'card');
-  const head=element('div',undefined,'cardhead');head.append(element('h3','Outcome, amount and deadline checks'));
-  const body=element('div',undefined,'cardbody');
-  body.append(element('p','Checks apply to the original machine decision, not your edited draft. Matching values does not certify legal correctness.','meta'));
-  body.append(element('p',checks.status==='no_rule_issue_detected'?'No rule issue detected. Source context still needs review.':'Review required: '+checks.flags.join(', ').replaceAll('_',' '),'warning'));
-  for(const [kind,count] of Object.entries(checks.counts))body.append(element('p',`${kind}: ${count.matched_linked_source_count} linked matches / ${count.summary_claim_count} summary claims; ${count.source_candidate_count} source candidates.`));
-  const details=element('details');details.append(element('summary','Inspect extracted values and possible omissions'));
-  for(const item of [...checks.claims,...checks.possible_omissions]){
-    const row=element('div',undefined,'entry');row.append(element('p',`${item.kind}: ${item.value} — ${item.status.replaceAll('_',' ')}`));
-    if(item.source_text)row.append(element('p',item.source_text));
-    const page=item.source_page??item.page;
-    if(page){const b=element('button',`Source page ${page}`,'evidence');b.onclick=()=>{selected=null;showPage(page);$('evidenceLabel').textContent='Detail-check source context — attribution requires review';};row.append(b);}
-    details.append(row);
+/* ── Helpers ── */
+const $=id=>document.getElementById(id);
+let job=null, docIndex=null, doc=null, selected=null, timer=null, dirty=false, active=false;
+const titles = {
+  background: 'Background',
+  issue: 'Issue',
+  reasoning: 'Reasoning',
+  decision: 'Directions'
+};
+const fullTitles = {
+  background: 'Background & procedural history',
+  issue: 'Issues / dispute context',
+  reasoning: 'Reasoning · source passages',
+  decision: 'Decision & operative directions'
+};
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function statusMsg(title, detail='', kind='') {
+  const bar = $('status');
+  bar.className = 'status-bar visible ' + kind;
+  bar.innerHTML = '<strong>' + esc(title) + '</strong> ' + esc(detail);
+}
+function hideStatus() { $('status').className = 'status-bar'; }
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function api(url, options={}) {
+  options.headers = {
+    ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}),
+    'X-Review-Request':'1',
+    ...options.headers
+  };
+  const r = await fetch(url, options);
+  if (!r.ok) {
+    let d; try { d = await r.json(); } catch { d = {detail:'Request failed'}; }
+    throw Error(typeof d.detail === 'string' ? d.detail : 'Please check the inputs and retry.');
   }
-  if(!checks.claims.length)details.append(element('p','No supported detail syntax found in the machine decision. This is not a correctness pass.'));
-  body.append(details);card.append(head,body);root.append(card);
+  return r.json();
 }
-function showEvidence(e){selected=e;showPage(e.page);$('evidenceLabel').textContent=`Evidence ${e.id} · ${e.attribution?.label?.replaceAll('_',' ')||'attribution requires review'}`}
-function showPage(page){if(!doc)return;page=Math.max(1,Math.min(Number(page),doc.result.canonical_pages.length));$('pages').value=page;$('pageLabel').textContent=`${page} / ${doc.result.canonical_pages.length}`;$('previous').disabled=page===1;$('next').disabled=page===doc.result.canonical_pages.length;$('pageImage').hidden=!doc.is_pdf;$('noImage').hidden=doc.is_pdf;if(doc.is_pdf)$('pageImage').src=base()+`/pages/${page}.png`;const text=Array.from(doc.result.canonical_pages[page-1]);const spans=(selected?.fragments||[]).filter(f=>f.page===page).sort((a,b)=>a.start-b.start);const node=$('sourceText');node.replaceChildren();let offset=0;for(const f of spans){if(f.start<offset)continue;node.append(document.createTextNode(text.slice(offset,f.start).join('')),element('mark',text.slice(f.start,f.end).join('')));offset=f.end}node.append(document.createTextNode(text.slice(offset).join('')));const mark=node.querySelector('mark');if(mark)node.scrollTop+=mark.getBoundingClientRect().top-node.getBoundingClientRect().top-40;else node.scrollTop=0}
-$('documents').onchange=async e=>{if(dirty&&!confirm('Discard unsaved reviewer edits?')){e.target.value=docIndex;return}try{await loadDoc(e.target.value)}catch(err){status('Could not load document',err.message,'error')}};$('pages').onchange=e=>showPage(e.target.value);$('finalPages').onclick=()=>{selected=null;showPage(Math.max(1,doc.result.canonical_pages.length-1));$('evidenceLabel').textContent='Final pages — verify the current order and all its conditions.'};$('previous').onclick=()=>showPage(Number($('pages').value)-1);$('next').onclick=()=>showPage(Number($('pages').value)+1);$('pageImage').onerror=()=>{$('pageImage').hidden=true;$('noImage').hidden=false;$('noImage').textContent='Page image unavailable. Check the extracted text and original PDF.'};
-const runningJudges=new Set();
-function setView(view){
-  for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===view));
-  $('sections').hidden=view!=='brief';$('auditCard').hidden=view!=='brief';
-  $('detailChecks').hidden=view!=='checks';$('judgePanel').hidden=view!=='judge';
-  $('editToggle').hidden=view!=='brief';$('editor').hidden=true;$('editToggle').textContent='Edit reviewer draft';
+
+function base() { return `/api/jobs/${job}/documents/${docIndex}`; }
+
+/* ── Settings toggle ── */
+function toggleSettings() {
+  const btn = $('settingsToggle');
+  const body = $('settingsBody');
+  const expanded = btn.getAttribute('aria-expanded') === 'true';
+  btn.setAttribute('aria-expanded', String(!expanded));
+  body.classList.toggle('open');
 }
-for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>setView(button.dataset.view);
-function renderJudge(){
-  const report=doc?.judge;
-  const pending=runningJudges.has(base());
-  $('runJudge').disabled=pending||!!report;
-  $('runJudge').textContent=pending?'Reviewing passages…':report?'Review complete':'Run local judge';
-  $('judgeStatus').textContent=pending?'The local model is reading the evidence. You can keep browsing the brief.':report?
-    `Reviewed ${report.findings.length} of ${report.total_extracts} extracts · ${report.model} · included in your ZIP`:'';
+function updateSettingsSummary() {
+  const words = $('budget').options[$('budget').selectedIndex].text.split('·')[0].trim();
+  const extraction = $('evidenceOnly').checked ? 'Evidence only' : 'Automatic extraction';
+  $('settingsSummary').textContent = words + ' · ' + extraction;
+}
+
+/* ── File selection ── */
+$('files').addEventListener('change', function() {
+  const list = $('fileList');
+  const files = [...this.files];
+  if (files.length) {
+    list.hidden = false;
+    list.replaceChildren(...files.map(f => { const s = el('span', '📄 ' + f.name); return s; }));
+    $('create').disabled = false;
+  } else {
+    list.hidden = true;
+    $('create').disabled = true;
+  }
+});
+
+/* ── Drag & drop ── */
+const dz = $('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  const dt = new DataTransfer();
+  for (const f of e.dataTransfer.files) {
+    if (f.name.endsWith('.pdf') || f.name.endsWith('.txt')) dt.items.add(f);
+  }
+  if (dt.files.length) { $('files').files = dt.files; $('files').dispatchEvent(new Event('change')); }
+});
+
+/* ── Upload ── */
+$('uploadForm').onsubmit = async e => {
+  e.preventDefault();
+  if (active) return;
+  if (dirty && !confirm('Discard unsaved reviewer edits?')) return;
+  const files = [...$('files').files];
+  if (files.length > 10 || files.some(f => f.size > 50000000) || files.reduce((n,f) => n+f.size, 0) > 100000000) {
+    statusMsg('Upload limit exceeded', 'Use up to 10 files, 50 MB each and 100 MB total.', 'error');
+    return;
+  }
+  active = true;
+  $('create').disabled = true;
+  statusMsg('Creating your brief', 'Long judgments take longer because the full extracted body is scored.', 'busy');
+  const data = new FormData();
+  for (const f of files) data.append('files', f);
+  data.append('budget', $('budget').value);
+  data.append('ocr', $('ocr').value);
+  data.append('evidence_only', $('evidenceOnly').checked);
+  try {
+    const r = await api('/api/jobs', {method:'POST', body:data});
+    job = r.id; dirty = false; doc = null;
+    poll();
+  } catch(err) {
+    active = false;
+    $('create').disabled = false;
+    statusMsg('Could not start', err.message, 'error');
+  }
+};
+
+/* ── Polling ── */
+async function poll() {
+  try {
+    const r = await api(`/api/jobs/${job}`);
+    statusMsg(r.message, `${r.completed} of ${r.total} documents processed`, 'busy');
+    if (['ready','failed'].includes(r.status)) {
+      active = false;
+      $('create').disabled = false;
+      $('errors').replaceChildren(...r.errors.map(e => el('p', (e.name ? e.name+': ':'')+e.message)));
+      if (!r.documents.length) {
+        statusMsg('No summary was produced', r.errors.map(e => e.message).join(' '), 'error');
+        return;
+      }
+      const docSelect = $('documents');
+      docSelect.replaceChildren(...r.documents.map(e => {
+        const o = el('option', e.name + (e.missing.length ? ' · INCOMPLETE' : ''));
+        o.value = e.index; return o;
+      }));
+      docSelect.hidden = r.documents.length <= 1;
+      $('export').href = `/api/jobs/${job}/export`;
+      await loadDoc(r.documents[0].index);
+      showReview();
+      return;
+    }
+    timer = setTimeout(poll, 1500);
+  } catch(err) {
+    active = false;
+    $('create').disabled = false;
+    statusMsg('Processing status unavailable', err.message, 'error');
+  }
+}
+
+/* ── Screen switching ── */
+function showUpload() {
+  $('uploadScreen').style.display = '';
+  $('reviewScreen').classList.remove('visible');
+  $('newReview').style.display = 'none';
+  $('mobileToggle').hidden = true;
+  $('clear').hidden = !job;
+  hideStatus();
+}
+function showReview() {
+  $('uploadScreen').style.display = 'none';
+  $('reviewScreen').classList.add('visible');
+  $('newReview').style.display = '';
+  $('mobileToggle').hidden = false;
+  hideStatus();
+}
+
+/* ── Load document ── */
+async function loadDoc(index) {
+  docIndex = Number(index);
+  const url = base();
+  const data = await api(url);
+  if (base() !== url) return;
+  doc = data; selected = null; dirty = false;
+  $('saved').textContent = '';
+  $('editor').hidden = true;
+  $('sections').hidden = false;
+  $('editToggle').hidden = false;
+  $('editToggle').textContent = 'Edit reviewer draft';
+  const r = data.result;
+  const missing = r.audit.missing_sections;
+
+  // Header
+  const fileName = r.source_file || 'Document';
+  const caseName = fileName.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  $('reviewEyebrow').textContent = r.model?.mode === 'evidence_only' ? 'Extraction-only result' : 'Example judgment';
+  $('caseTitle').textContent = caseName;
+  $('caseMeta').textContent = `${r.canonical_pages.length} page${r.canonical_pages.length===1?'':'s'} · ${r.summary_words} words`;
+
+  if (missing.length) {
+    statusMsg('Incomplete brief — review required', 'Not reliably identified: ' + missing.join(', '), 'error');
+  } else {
+    hideStatus();
+  }
+  $('notice').replaceChildren();
+  if (missing.length) $('notice').append(el('div','Missing sections are not a negative court finding. Consult the source before using this brief.','warning danger'));
+  if (r.model.mode === 'evidence_only') $('notice').append(el('div','Extraction-only result: the trained encoder and selector were not used.','warning'));
+
+  renderSections(r);
+  renderDetailChecks(r);
+
+  // Editor fields
+  $('editFields').replaceChildren();
+  for (const key of Object.keys(titles)) {
+    const label = el('label', fullTitles[key], 'reviewlabel');
+    label.htmlFor = 'edit-' + key;
+    const field = el('textarea');
+    field.id = 'edit-' + key;
+    field.value = data.review?.sections[key] ?? r.sections[key].map(x => x.sentence).join(' ');
+    field.oninput = () => dirty = true;
+    $('editFields').append(label, field);
+  }
+  $('notes').value = data.review?.notes || '';
+
+  // Audit
+  $('auditToggle').hidden = false;
+  $('audit').replaceChildren(
+    ...r.audit.flags.map(f => el('span', f.replaceAll('_',' '), 'flag')),
+    ...r.warnings.map(w => el('p', w))
+  );
+  const omission = r.audit.possible_omitted_directions || [];
+  if (omission.length) {
+    $('audit').append(el('h4', 'Possible omitted directions'));
+    for (const x of omission) {
+      const p = el('p', x.sentence);
+      const b = el('button', 'View source', 'citation-btn');
+      b.onclick = () => showEvidence(x);
+      p.append(document.createElement('br'), b);
+      $('audit').append(p);
+    }
+  }
+
+  showPage(1);
+  setView('brief');
+  renderJudge();
+
+  // Auto-select first citation for the example
+  if (r.sections.reasoning?.length) {
+    const first = r.sections.reasoning[0];
+    setTimeout(() => showEvidence(first), 300);
+  }
+}
+
+/* ── Render brief sections ── */
+function renderSections(r) {
+  $('sections').replaceChildren();
+  for (const [key, title] of Object.entries(titles)) {
+    const section = el('div', undefined, 'brief-section');
+    const heading = el('h3', title, 'brief-heading');
+    section.append(heading);
+
+    if (key === 'issue') {
+      const modeText = ({
+        explicit_source_issue: 'Issue wording found in the source.',
+        source_dispute_description: 'A description of the dispute.',
+        reported_competing_positions: 'Reported positions of the parties.',
+        procedural_context: 'Procedural context only.'
+      })[r.issue_mode] || '';
+      if (modeText) section.append(el('p', modeText, 'notice'));
+    }
+
+    if (!r.sections[key].length) {
+      section.append(el('div', 'Not reliably identified. Consult the judgment.', 'warning danger'));
+    }
+
+    const blocks = [];
+    for (const e of r.sections[key]) {
+      const last = blocks.at(-1);
+      if (key === 'reasoning' && last && last[0].reasoning_block_id === e.reasoning_block_id) last.push(e);
+      else blocks.push([e]);
+    }
+
+    for (const block of blocks) {
+      const entry = el('div', undefined, 'brief-entry');
+      entry.append(el('p', block.map(e => e.sentence).join(' ')));
+      for (const e of block) {
+        const btn = el('button',
+          `${e.page}${e.page_end !== e.page ? '–'+e.page_end : ''} · Page ${e.page}`,
+          'citation-btn');
+        btn.dataset.evidenceId = e.id;
+        btn.onclick = () => {
+          // Clear previous active
+          document.querySelectorAll('.citation-btn.active').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          showEvidence(e);
+          // On mobile, switch to source
+          if (window.innerWidth <= 860) {
+            $('briefPanel').classList.add('mobile-hidden');
+            $('sourcePanel').classList.add('mobile-visible');
+            $('mobileToggle').textContent = 'View brief';
+          }
+        };
+        entry.append(btn);
+      }
+      section.append(entry);
+    }
+    $('sections').append(section);
+  }
+}
+
+/* ── Detail checks ── */
+function renderDetailChecks(r) {
+  const root = $('detailChecks'); root.replaceChildren();
+  const checks = r.audit.decision_detail_checks; if (!checks) return;
+  root.append(el('p', 'Checks apply to the original machine decision. Matching values does not certify legal correctness.', 'notice'));
+  root.append(el('p', checks.status === 'no_rule_issue_detected'
+    ? 'No rule issue detected. Source context still needs review.'
+    : 'Review required: ' + checks.flags.join(', ').replaceAll('_',' '), 'warning'));
+
+  for (const [kind, count] of Object.entries(checks.counts)) {
+    root.append(el('p', `${kind}: ${count.matched_linked_source_count} linked / ${count.summary_claim_count} claims; ${count.source_candidate_count} candidates.`, 'notice'));
+  }
+
+  for (const item of [...checks.claims, ...checks.possible_omissions]) {
+    const row = el('div', undefined, 'check-entry');
+    row.append(el('p', `${item.kind}: ${item.value} — ${item.status.replaceAll('_',' ')}`));
+    if (item.source_text) row.append(el('p', item.source_text));
+    const page = item.source_page ?? item.page;
+    if (page) {
+      const b = el('button', `Source page ${page}`, 'citation-btn');
+      b.onclick = () => { selected = null; showPage(page); };
+      row.append(b);
+    }
+    root.append(row);
+  }
+  if (!checks.claims.length) root.append(el('p', 'No supported detail syntax found.', 'notice'));
+}
+
+/* ── Show evidence / page ── */
+function showEvidence(e) {
+  selected = e;
+  showPage(e.page);
+}
+
+function showPage(page) {
+  if (!doc) return;
+  page = Math.max(1, Math.min(Number(page), doc.result.canonical_pages.length));
+  $('pageLabel').textContent = `Page ${page} of ${doc.result.canonical_pages.length}`;
+  $('previous').disabled = page === 1;
+  $('next').disabled = page === doc.result.canonical_pages.length;
+  $('pageImage').hidden = !doc.is_pdf;
+  $('noImage').hidden = doc.is_pdf;
+  if (doc.is_pdf) $('pageImage').src = base() + `/pages/${page}.png`;
+
+  const text = Array.from(doc.result.canonical_pages[page - 1]);
+  const spans = (selected?.fragments || []).filter(f => f.page === page).sort((a,b) => a.start - b.start);
+  const node = $('sourceText');
+  node.replaceChildren();
+
+  if (spans.length) {
+    // Build with highlighted passage wrapper
+    let offset = 0;
+    for (const f of spans) {
+      if (f.start < offset) continue;
+      // Text before highlight
+      if (f.start > offset) node.append(document.createTextNode(text.slice(offset, f.start).join('')));
+      // Highlighted span with passage wrapper
+      const passageSpan = document.createElement('span');
+      passageSpan.className = 'highlighted-passage';
+      passageSpan.textContent = text.slice(f.start, f.end).join('');
+      node.append(passageSpan);
+      offset = f.end;
+    }
+    if (offset < text.length) node.append(document.createTextNode(text.slice(offset).join('')));
+
+    // Scroll to first highlight
+    requestAnimationFrame(() => {
+      const hl = node.querySelector('.highlighted-passage');
+      if (hl) hl.scrollIntoView({block:'center', behavior:'smooth'});
+    });
+  } else {
+    node.textContent = text.join('');
+  }
+}
+
+/* ── Page navigation ── */
+$('previous').onclick = () => {
+  const cur = parseInt($('pageLabel').textContent.match(/\d+/)?.[0] || '1');
+  showPage(cur - 1);
+};
+$('next').onclick = () => {
+  const cur = parseInt($('pageLabel').textContent.match(/\d+/)?.[0] || '1');
+  showPage(cur + 1);
+};
+$('pageImage').onerror = () => {
+  $('pageImage').hidden = true;
+  $('noImage').hidden = false;
+  $('noImage').textContent = 'Page image unavailable.';
+};
+
+/* ── Document switcher ── */
+$('documents').onchange = async e => {
+  if (dirty && !confirm('Discard unsaved reviewer edits?')) { e.target.value = docIndex; return; }
+  try { await loadDoc(e.target.value); } catch(err) { statusMsg('Could not load document', err.message, 'error'); }
+};
+
+/* ── View switching ── */
+function setView(view) {
+  for (const button of document.querySelectorAll('[data-view]'))
+    button.setAttribute('aria-pressed', String(button.dataset.view === view));
+  $('sections').hidden = view !== 'brief';
+  $('auditToggle').hidden = view !== 'brief';
+  $('audit').classList.remove('open');
+  $('detailChecks').hidden = view !== 'checks';
+  $('judgePanel').hidden = view !== 'judge';
+  $('editToggle').hidden = view !== 'brief';
+  $('editor').hidden = true;
+  if ($('editToggle')) $('editToggle').textContent = 'Edit reviewer draft';
+}
+for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => setView(button.dataset.view);
+
+/* ── Audit toggle ── */
+function toggleAudit() {
+  $('audit').classList.toggle('open');
+}
+
+/* ── Judge ── */
+const runningJudges = new Set();
+function renderJudge() {
+  const report = doc?.judge;
+  const pending = runningJudges.has(base());
+  $('runJudge').disabled = pending || !!report;
+  $('runJudge').textContent = pending ? 'Reviewing passages…' : report ? 'Review complete' : 'Run local judge';
+  $('judgeStatus').textContent = pending
+    ? 'The local model is reading the evidence.'
+    : report ? `Reviewed ${report.findings.length} of ${report.total_extracts} extracts · ${report.model}` : '';
   $('findings').replaceChildren();
-  for(const row of report?.findings||[]){
-    const item=element('article',undefined,'finding '+row.verdict);
-    item.append(element('h4',row.section+' · '+row.verdict.replaceAll('_',' ')),element('p',row.claim));
-    if(row.citation){
-      item.append(element('blockquote',row.citation.text));
-      const link=element('button',`Show quote on page ${row.citation.page}`,'evidence');
-      link.onclick=()=>{showEvidence({id:row.extract_id,page:row.citation.page,fragments:[row.citation]});$('evidenceLabel').textContent='Source quotation used by the local judge';$('sourceText').scrollIntoView({block:'nearest'});};
+  for (const row of report?.findings || []) {
+    const item = el('article', undefined, 'finding ' + row.verdict);
+    item.append(el('h4', row.section + ' · ' + row.verdict.replaceAll('_',' ')));
+    item.append(el('p', row.claim));
+    if (row.citation) {
+      item.append(el('blockquote', row.citation.text));
+      const link = el('button', `Show quote on page ${row.citation.page}`, 'citation-btn');
+      link.onclick = () => {
+        showEvidence({id:row.extract_id, page:row.citation.page, fragments:[row.citation]});
+        $('sourceText').scrollIntoView({block:'nearest'});
+      };
       item.append(link);
-    }else item.append(element('small',row.reason));
+    } else {
+      item.append(el('small', row.reason));
+    }
     $('findings').append(item);
   }
 }
-$('runJudge').onclick=async()=>{
-  const url=base();runningJudges.add(url);renderJudge();
-  let error='';
-  try{const report=await api(url+'/judge',{method:'POST'});if(doc&&url===base())doc.judge=report;}
-  catch(err){error=err.message;}
-  finally{runningJudges.delete(url);if(doc&&url===base()){renderJudge();if(error)$('judgeStatus').textContent=error;}}
+$('runJudge').onclick = async () => {
+  const url = base(); runningJudges.add(url); renderJudge();
+  let error = '';
+  try {
+    const report = await api(url + '/judge', {method:'POST'});
+    if (doc && url === base()) doc.judge = report;
+  } catch(err) { error = err.message; }
+  finally {
+    runningJudges.delete(url);
+    if (doc && url === base()) { renderJudge(); if (error) $('judgeStatus').textContent = error; }
+  }
 };
-$('tryDemo').onclick=()=>{
-  if(active)return;
-  const text='Fictional classroom example.\n1. The employee challenged the rejection of her claim for unpaid wages.\n2. The issue before us is whether the wage records establish the claim.\n3. In our view, the signed wage records establish the amount due.\n4. We allow the appeal. The employer shall pay Rs. 25,000 within six weeks.';
-  const transfer=new DataTransfer();transfer.items.add(new File([text],'classroom-example.txt',{type:'text/plain'}));
-  $('files').files=transfer.files;$('uploadForm').requestSubmit();
+
+/* ── Example / demo ── */
+$('tryDemo').onclick = () => {
+  if (active) return;
+  const text = 'Fictional classroom example.\n1. The employee challenged the rejection of her claim for unpaid wages.\n2. The issue before us is whether the wage records establish the claim.\n3. In our view, the signed wage records establish the amount due.\n4. We allow the appeal. The employer shall pay Rs. 25,000 within six weeks.';
+  const transfer = new DataTransfer();
+  transfer.items.add(new File([text], 'classroom-example.txt', {type:'text/plain'}));
+  $('files').files = transfer.files;
+  $('files').dispatchEvent(new Event('change'));
+  $('uploadForm').requestSubmit();
 };
-$('editToggle').onclick=()=>{const editing=$('editor').hidden;$('editor').hidden=!editing;$('sections').hidden=editing;$('editToggle').textContent=editing?'Back to machine extracts':'Edit reviewer draft'};$('notes').oninput=()=>dirty=true;
-$('save').onclick=async()=>{const sections=Object.fromEntries(Object.keys(titles).map(k=>[k,$('edit-'+k).value]));$('save').disabled=true;try{const r=await api(base()+'/review',{method:'PUT',body:JSON.stringify({sections,notes:$('notes').value})});dirty=false;$('saved').textContent=`Saved revision ${r.revision}. Included in your export.`}catch(err){$('saved').textContent=err.message}finally{$('save').disabled=false}};
-$('export').onclick=e=>{if(dirty){e.preventDefault();setView('brief');$('saved').textContent='Save your draft before exporting.';$('editor').hidden=false;$('sections').hidden=true;$('editToggle').textContent='Back to machine extracts'}};
-$('clear').onclick=async()=>{if(!confirm('Remove your uploaded files, results and saved drafts from this server?'))return;clearTimeout(timer);try{const r=await api('/api/clear',{method:'POST'});job=null;doc=null;dirty=false;active=false;$('create').disabled=false;$('files').value='';$('results').hidden=true;$('empty').hidden=false;status('Workspace cleared',r.message)}catch(err){status('Could not clear workspace',err.message,'error')}};
-window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});api('/api/health').then(r=>{if(!r.model_configured){$('evidenceOnly').checked=true;status('Extraction-only mode selected','The trained checkpoint files are unavailable on this server.');}}).catch(e=>status('Server unavailable',e.message,'error'));
-</script></body></html>
+
+/* ── Editor ── */
+$('editToggle').onclick = () => {
+  const editing = $('editor').hidden;
+  $('editor').hidden = !editing;
+  $('sections').hidden = editing;
+  $('editToggle').textContent = editing ? 'Back to machine extracts' : 'Edit reviewer draft';
+};
+$('notes').oninput = () => dirty = true;
+
+$('save').onclick = async () => {
+  const sections = Object.fromEntries(Object.keys(titles).map(k => [k, $('edit-'+k).value]));
+  $('save').disabled = true;
+  try {
+    const r = await api(base() + '/review', {method:'PUT', body:JSON.stringify({sections, notes:$('notes').value})});
+    dirty = false;
+    $('saved').textContent = `Saved revision ${r.revision}.`;
+  } catch(err) { $('saved').textContent = err.message; }
+  finally { $('save').disabled = false; }
+};
+
+/* ── Export guard ── */
+$('export').onclick = e => {
+  if (dirty) {
+    e.preventDefault();
+    setView('brief');
+    $('saved').textContent = 'Save your draft before exporting.';
+    $('editor').hidden = false;
+    $('sections').hidden = true;
+    $('editToggle').textContent = 'Back to machine extracts';
+  }
+};
+
+/* ── Clear ── */
+$('clear').onclick = async () => {
+  if (!confirm('Remove your uploaded files, results and saved drafts from this server?')) return;
+  clearTimeout(timer);
+  try {
+    const r = await api('/api/clear', {method:'POST'});
+    job = null; doc = null; dirty = false; active = false;
+    $('create').disabled = true;
+    $('files').value = '';
+    $('fileList').hidden = true;
+    showUpload();
+    statusMsg('Workspace cleared', r.message);
+  } catch(err) { statusMsg('Could not clear workspace', err.message, 'error'); }
+};
+
+/* ── Mobile panel toggle ── */
+function toggleMobilePanel() {
+  const bp = $('briefPanel');
+  const sp = $('sourcePanel');
+  const btn = $('mobileToggle');
+  const showingSource = sp.classList.contains('mobile-visible');
+  if (showingSource) {
+    sp.classList.remove('mobile-visible');
+    bp.classList.remove('mobile-hidden');
+    btn.textContent = 'View source';
+  } else {
+    sp.classList.add('mobile-visible');
+    bp.classList.add('mobile-hidden');
+    btn.textContent = 'View brief';
+  }
+}
+
+/* ── Beforeunload ── */
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ── Init ── */
+api('/api/health').then(r => {
+  if (!r.model_configured) {
+    $('evidenceOnly').checked = true;
+    updateSettingsSummary();
+    statusMsg('Extraction-only mode', 'The trained checkpoint files are unavailable on this server.');
+  }
+}).catch(e => statusMsg('Server unavailable', e.message, 'error'));
+</script>
+</body></html>

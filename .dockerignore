@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+*.pyc
+.runtime
+*.zip
+*.tar.gz
+*.log
+/tmp
