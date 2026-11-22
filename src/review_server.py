@@ -44,7 +44,7 @@ def create_app(data_root=None,processor=None,password=None,judge_runner=judge_su
     app=FastAPI(title='Judgment Review',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
     app.state.store=store
     app.add_middleware(BodyLimit)
-    app.add_middleware(TrustedHostMiddleware,allowed_hosts=os.environ.get('APP_ALLOWED_HOSTS','localhost,127.0.0.1,testserver').split(','))
+    app.add_middleware(TrustedHostMiddleware,allowed_hosts=os.environ.get('APP_ALLOWED_HOSTS','*').split(','))
 
     @app.middleware('http')
     async def protect(request,call_next):
@@ -175,9 +175,11 @@ def create_app(data_root=None,processor=None,password=None,judge_runner=judge_su
 
 def main():
     import uvicorn
-    host=os.environ.get('APP_HOST','127.0.0.1')
-    if host not in {'127.0.0.1','localhost','::1'} and len(os.environ.get('APP_PASSWORD',''))<12:
-        raise SystemExit('Remote binding requires APP_PASSWORD of at least 12 characters. Use HTTPS at your reverse proxy.')
-    uvicorn.run(create_app(),host=host,port=int(os.environ.get('APP_PORT','7861')),access_log=False)
+    host=os.environ.get('APP_HOST','0.0.0.0' if os.environ.get('PORT') else '127.0.0.1')
+    allow_unauth=os.environ.get('APP_ALLOW_UNAUTHENTICATED','').lower() in {'1','true','yes'}
+    if host not in {'127.0.0.1','localhost','::1'} and not allow_unauth and len(os.environ.get('APP_PASSWORD',''))<12:
+        raise SystemExit('Remote binding requires APP_PASSWORD of at least 12 characters (or set APP_ALLOW_UNAUTHENTICATED=true). Use HTTPS at your reverse proxy.')
+    port=int(os.environ.get('PORT') or os.environ.get('APP_PORT','7861'))
+    uvicorn.run(create_app(),host=host,port=port,access_log=False)
 
 if __name__=='__main__':main()
