@@ -34,6 +34,8 @@ class BodyLimit:
 def create_app(data_root=None,processor=None,password=None,judge_runner=judge_summary):
     data_root=data_root or os.environ.get('LEGAL_REVIEW_DATA',str(Path(tempfile.gettempdir())/'legal_review_v45'))
     store=ReviewStore(data_root,processor)
+    public_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+    public_origin = f'https://{public_domain}' if public_domain else None
     judge_lock=Lock()
     password=password if password is not None else os.environ.get('APP_PASSWORD','')
     @asynccontextmanager
@@ -59,7 +61,7 @@ def create_app(data_root=None,processor=None,password=None,judge_runner=judge_su
         if request.method in {'POST','PUT','DELETE'}:
             if request.headers.get('x-review-request')!='1':return JSONResponse({'detail':'Missing request protection header'},403)
             origin=request.headers.get('origin')
-            if origin and origin.rstrip('/')!=str(request.base_url).rstrip('/'):
+            if origin and origin.rstrip('/')!=(public_origin or str(request.base_url).rstrip('/')):
                 return JSONResponse({'detail':'Cross-origin writes are not allowed'},403)
             try:
                 if int(request.headers.get('content-length','0'))>MAX_BATCH_BYTES+1_000_000:
@@ -69,7 +71,7 @@ def create_app(data_root=None,processor=None,password=None,judge_runner=judge_su
         if len(owner)!=64 or any(c not in '0123456789abcdef' for c in owner):owner=secrets.token_hex(32)
         request.state.owner=owner
         response=await call_next(request)
-        response.set_cookie('review_session',owner,max_age=3600,httponly=True,samesite='strict',secure=request.url.scheme=='https')
+        response.set_cookie('review_session',owner,max_age=3600,httponly=True,samesite='strict',secure=bool(public_origin) or request.url.scheme=='https')
         response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
