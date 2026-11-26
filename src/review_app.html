@@ -36,20 +36,18 @@ header {
   padding: 0 32px; height: 52px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.seal {
-  border: 1.5px solid #9a7a80; border-radius: 4px;
-  width: 30px; height: 30px; display: grid; place-items: center;
-  font: 18px/1 var(--serif); color: #d4b8be;
-}
+.brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: #fff; text-decoration: none; }
+.brand svg { width: 34px; height: 34px; flex: none; }
+.brand:hover { color: #f5d6aa; }
+header :focus-visible { outline-color: #f5d6aa; }
 header h1 { margin: 0; font: 500 18px/1 var(--serif); letter-spacing: -.3px; }
-.header-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #c8b0b6; }
-.btn-new-review {
-  background: var(--accent); color: #fff; border: 0;
-  padding: 7px 16px; border-radius: 4px; font-size: 13px; font-weight: 600;
-  display: none;
+.header-right { display: flex; align-items: center; font-size: 13px; color: #c8b0b6; }
+.btn-back {
+  background: transparent; color: #fff; border: 1px solid #a4868c;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;
 }
-.btn-new-review:hover { background: #8a3849; }
+.btn-back:hover { background: #513139; }
+.btn-resume { background: transparent; border: 0; color: var(--accent); text-decoration: underline; padding: 8px 0; }
 
 /* ── Upload screen ── */
 .upload-screen {
@@ -124,8 +122,11 @@ header h1 { margin: 0; font: 500 18px/1 var(--serif); letter-spacing: -.3px; }
 
 /* ── Example preview (right column) ── */
 .example-preview {
-  padding-top: 4px;
+  padding: clamp(20px, 3vw, 32px);
+  background: #faf7f2; border: 1px solid var(--line);
+  border-top: 3px solid var(--accent); border-radius: 8px;
 }
+.demo-shortcut { display: none; }
 .example-preview .eyebrow {
   font-size: 12px; color: var(--muted); margin: 0 0 4px; letter-spacing: .3px;
 }
@@ -380,6 +381,11 @@ textarea.notes { min-height: 70px; }
 
 /* ── Responsive ── */
 @media (max-width: 860px) {
+  .demo-shortcut {
+    display: inline-block; margin-left: 8px; padding: 9px 4px;
+    color: var(--accent); background: transparent; border: 0;
+    font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+  }
   .upload-screen { grid-template-columns: 1fr; gap: 40px; padding: 40px 24px 60px; }
   .upload-left h2 { font-size: 28px; }
   .example-preview .case-title { font-size: 22px; }
@@ -404,13 +410,19 @@ textarea.notes { min-height: 70px; }
 
 <!-- ── HEADER ── -->
 <header>
-  <div class="brand">
-    <div class="seal" aria-hidden="true">§</div>
-    <h1>Judgment Review</h1>
-  </div>
+  <h1><a class="brand" href="/" id="homeLink" aria-label="Judgment Review home">
+    <svg viewBox="0 0 36 36" fill="none" aria-hidden="true">
+      <rect x="1" y="1" width="34" height="34" rx="8" fill="#533039"/>
+      <g stroke="#f5d6aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 7v18M8 12l20-3M7 19l4-7 4 7zm14-2 4-7 4 7z"/>
+        <path d="M7 19q4 6 8 0m6-2q4 6 8 0M12 27q3-2 6-1 3-1 6 1"/>
+      </g>
+    </svg>
+    Judgment Review
+  </a></h1>
   <div class="header-right">
-    <span>Local workspace</span>
-    <button id="newReview" class="btn-new-review" onclick="showUpload()">+ New review</button>
+    <span id="workspaceLabel">Local workspace</span>
+    <button id="newReview" class="btn-back" hidden onclick="showUpload()">← Back to home</button>
   </div>
 </header>
 
@@ -420,16 +432,18 @@ textarea.notes { min-height: 70px; }
 <!-- ── UPLOAD SCREEN ── -->
 <div id="uploadScreen" class="upload-screen">
   <div class="upload-left">
-    <h2>Review a judgment</h2>
+    <h2 id="homeTitle" tabindex="-1">Review a judgment</h2>
     <p class="subtitle">Create a brief you can trace back to the source.</p>
 
+    <button id="resumeReview" class="btn-resume" hidden onclick="showReview()">Resume current brief</button>
     <form id="uploadForm">
       <div class="dropzone" id="dropzone">
         <span class="arrow">↑</span>
         <p>Drop a PDF or text file</p>
         <button type="button" class="btn-choose" onclick="document.getElementById('files').click()">Choose files</button>
+        <button type="button" class="demo-shortcut" onclick="openExample()">Try an example</button>
         <input id="files" type="file" multiple accept=".pdf,.txt" required aria-label="Choose judgments">
-        <small>Up to 10 files · 50 MB each</small>
+        <small>Up to 10 files · 50 MB each · 100 MB total</small>
         <div id="fileList" class="file-list" hidden></div>
       </div>
 
@@ -463,10 +477,10 @@ textarea.notes { min-height: 70px; }
   </div>
 
   <div class="example-preview">
-    <p class="eyebrow">Example judgment</p>
-    <h3 class="case-title">Mehra v. State Licensing Board</h3>
+    <p class="eyebrow">Fictional classroom judgment</p>
+    <h3 class="case-title">Unpaid wages appeal</h3>
     <div class="example-excerpt">
-      <span class="para-num">14.</span> The Board did not supply the material on which the notice relied. Without access to that material, <mark>the petitioner could not meaningfully answer the allegations.</mark>
+      <span class="para-num">4.</span> We allow the appeal. <mark>The employer shall pay Rs. 25,000 within six weeks.</mark>
     </div>
     <button id="tryDemo" class="btn-open-example">Open example judgment</button>
   </div>
@@ -477,7 +491,7 @@ textarea.notes { min-height: 70px; }
   <div class="review-header">
     <div class="review-header-left">
       <p class="eyebrow" id="reviewEyebrow"></p>
-      <h2 class="case-title" id="caseTitle"></h2>
+      <h2 class="case-title" id="caseTitle" tabindex="-1"></h2>
       <p class="case-meta" id="caseMeta"></p>
     </div>
     <div class="review-header-right">
@@ -661,6 +675,7 @@ $('uploadForm').onsubmit = async e => {
   try {
     const r = await api('/api/jobs', {method:'POST', body:data});
     job = r.id; dirty = false; doc = null;
+    $('resumeReview').hidden = true;
     poll();
   } catch(err) {
     active = false;
@@ -702,10 +717,19 @@ async function poll() {
 }
 
 /* ── Screen switching ── */
+$('homeLink').onclick = event => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  if ($('reviewScreen').classList.contains('visible')) showUpload();
+  else $('homeTitle').focus();
+};
 function showUpload() {
   $('uploadScreen').style.display = '';
   $('reviewScreen').classList.remove('visible');
-  $('newReview').style.display = 'none';
+  $('newReview').hidden = true;
+  $('workspaceLabel').hidden = false;
+  $('resumeReview').hidden = !doc;
+  $('homeTitle').focus();
   $('mobileToggle').hidden = true;
   $('clear').hidden = !job;
   hideStatus();
@@ -713,7 +737,9 @@ function showUpload() {
 function showReview() {
   $('uploadScreen').style.display = 'none';
   $('reviewScreen').classList.add('visible');
-  $('newReview').style.display = '';
+  $('newReview').hidden = false;
+  $('workspaceLabel').hidden = true;
+  $('caseTitle').focus();
   $('mobileToggle').hidden = false;
   hideStatus();
 }
@@ -1010,7 +1036,8 @@ $('runJudge').onclick = async () => {
 };
 
 /* ── Example / demo ── */
-$('tryDemo').onclick = () => {
+$('tryDemo').onclick = openExample;
+function openExample() {
   if (active) return;
   const text = 'Fictional classroom example.\n1. The employee challenged the rejection of her claim for unpaid wages.\n2. The issue before us is whether the wage records establish the claim.\n3. In our view, the signed wage records establish the amount due.\n4. We allow the appeal. The employer shall pay Rs. 25,000 within six weeks.';
   const transfer = new DataTransfer();
@@ -1018,7 +1045,7 @@ $('tryDemo').onclick = () => {
   $('files').files = transfer.files;
   $('files').dispatchEvent(new Event('change'));
   $('uploadForm').requestSubmit();
-};
+}
 
 /* ── Editor ── */
 $('editToggle').onclick = () => {

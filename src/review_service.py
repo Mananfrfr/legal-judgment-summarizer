@@ -20,7 +20,8 @@ def trained_model():
     encoder=os.environ.get('LEGAL_ENCODER_DIR')
     bundle=os.environ.get('LEGAL_MODEL_BUNDLE')
     if not encoder or not bundle:raise ValueError('The trained model is not configured. Set the two model paths or explicitly select evidence-only mode.')
-    return FullDocumentRanker(encoder,bundle)
+    batch_size = max(1, int(os.environ.get("LEGAL_INFERENCE_BATCH_SIZE", "12")))
+    return FullDocumentRanker(encoder, bundle, batch_size=batch_size)
 
 class ReviewStore:
     def __init__(self,root,processor=None):
